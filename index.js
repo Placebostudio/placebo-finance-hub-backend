@@ -33,6 +33,8 @@ const jobModule = require("./data management/router/job-router.js");
 const jobRouter = jobModule.jobRouter;
 const reportModule = require("./data management/router/report-router.js");
 const reportRouter = reportModule.reportRouter;
+const currencyModule = require("./data management/router/currency-router.js");
+const currencyRouter = currencyModule.currencyRouter;
 
 const auditLogModule = require("./data management/router/audit_log-router.js");
 const audit_logRouter = auditLogModule.audit_logRouter;
@@ -94,6 +96,7 @@ app.use("/api/categories", categoryRouter)
 app.use("/api/column_mappings", column_mappingRouter)
 app.use("/api/jobs", jobRouter)
 app.use("/api/reports", reportRouter)
+app.use("/api/currencies", currencyRouter)
 
 app.use("/api/audit_logs", audit_logRouter)
 
