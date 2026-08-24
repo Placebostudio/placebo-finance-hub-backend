@@ -160,7 +160,8 @@ const matchController = {
             match_type,
             reasons = [],
             status = "confirmed",
-            confirmed_by
+            confirmed_by,
+            spam = false
         } = req.body;
 
 
@@ -190,12 +191,23 @@ const matchController = {
 
 
             // ====================================================
+            // VALIDATE SPAM
+            // ====================================================
+
+            if (typeof spam !== "boolean") {
+
+                return res.status(400).json({
+                    success: false,
+                    error: "spam must be true or false"
+                });
+            }
+
+
+            // ====================================================
             // VALIDATE AMOUNT
             // ====================================================
 
-            if (
-                Number(allocated_amount) <= 0
-            ) {
+            if (Number(allocated_amount) <= 0) {
 
                 return res.status(400).json({
                     success: false,
@@ -313,9 +325,6 @@ const matchController = {
 
             // ====================================================
             // CHECK PAIR ALREADY EXISTS
-            //
-            // Rejected pairs stay permanently recorded.
-            // Therefore a pair can never be suggested again.
             // ====================================================
 
             const existingPair = await db.query(
@@ -441,7 +450,8 @@ const matchController = {
                     reasons,
                     status,
                     confirmed_by,
-                    confirmed_at
+                    confirmed_at,
+                    spam
                 )
                 VALUES (
                     $1,
@@ -456,7 +466,8 @@ const matchController = {
                         WHEN $7 = 'confirmed'
                         THEN NOW()
                         ELSE NULL
-                    END
+                    END,
+                    $9
                 )
                 RETURNING *`,
                 [
@@ -467,7 +478,8 @@ const matchController = {
                     match_type,
                     JSON.stringify(reasons),
                     status,
-                    confirmed_by || null
+                    confirmed_by || null,
+                    spam
                 ]
             );
 
@@ -491,6 +503,11 @@ const matchController = {
 
     // ============================================================
     // UPDATE MATCH
+    //
+    // Can update:
+    // - all normal fields
+    // - only spam
+    // - normal fields + spam
     // ============================================================
 
     async updateMatch(req, res) {
@@ -503,11 +520,16 @@ const matchController = {
             match_type,
             reasons,
             status,
-            confirmed_by
+            confirmed_by,
+            spam
         } = req.body;
 
 
         try {
+
+            // ====================================================
+            // CHECK MATCH EXISTS
+            // ====================================================
 
             const existing = await db.query(
                 `SELECT *
@@ -525,11 +547,24 @@ const matchController = {
             }
 
 
-            const match = existing.rows[0];
+            // ====================================================
+            // VALIDATE SPAM
+            // ====================================================
+
+            if (
+                spam !== undefined &&
+                typeof spam !== "boolean"
+            ) {
+
+                return res.status(400).json({
+                    success: false,
+                    error: "spam must be true or false"
+                });
+            }
 
 
             // ====================================================
-            // VALIDATE
+            // VALIDATE MATCH TYPE
             // ====================================================
 
             if (
@@ -544,6 +579,10 @@ const matchController = {
             }
 
 
+            // ====================================================
+            // VALIDATE STATUS
+            // ====================================================
+
             if (
                 status !== undefined &&
                 !VALID_STATUSES.includes(status)
@@ -555,6 +594,10 @@ const matchController = {
                 });
             }
 
+
+            // ====================================================
+            // VALIDATE SCORE
+            // ====================================================
 
             if (
                 score !== undefined &&
@@ -573,6 +616,10 @@ const matchController = {
                 });
             }
 
+
+            // ====================================================
+            // VALIDATE ALLOCATED AMOUNT
+            // ====================================================
 
             if (
                 allocated_amount !== undefined &&
@@ -623,9 +670,12 @@ const matchController = {
                         END,
 
                     revalidated_at =
-                        NOW()
+                        NOW(),
 
-                 WHERE id = $7
+                    spam =
+                        COALESCE($7, spam)
+
+                 WHERE id = $8
 
                  RETURNING *`,
                 [
@@ -637,6 +687,9 @@ const matchController = {
                         : null,
                     status ?? null,
                     confirmed_by ?? null,
+                    spam !== undefined
+                        ? spam
+                        : null,
                     matchid
                 ]
             );

@@ -7,6 +7,7 @@ const columnMappingController = {
             const result = await db.query(`
                 SELECT *
                 FROM column_mappings
+                WHERE spam = FALSE
                 ORDER BY created_at DESC
             `);
 
@@ -25,6 +26,7 @@ const columnMappingController = {
                 SELECT *
                 FROM column_mappings
                 WHERE id = $1
+                  AND spam = FALSE
             `, [req.params.column_mappingid]);
 
             if (result.rows.length === 0) {
@@ -48,7 +50,8 @@ const columnMappingController = {
                 name,
                 statement_type,
                 source_signature,
-                mapping
+                mapping,
+                spam
             } = req.body;
 
             const result = await db.query(`
@@ -56,15 +59,17 @@ const columnMappingController = {
                     name,
                     statement_type,
                     source_signature,
-                    mapping
+                    mapping,
+                    spam
                 )
-                VALUES ($1, $2, $3, $4)
+                VALUES ($1, $2, $3, $4, $5)
                 RETURNING *
             `, [
                 name,
                 statement_type,
                 source_signature,
-                JSON.stringify(mapping)
+                JSON.stringify(mapping),
+                spam ?? false
             ]);
 
             res.status(201).json(result.rows[0]);
@@ -82,23 +87,26 @@ const columnMappingController = {
                 name,
                 statement_type,
                 source_signature,
-                mapping
+                mapping,
+                spam
             } = req.body;
 
             const result = await db.query(`
-                UPDATE column_mappings
-                SET
-                    name = COALESCE($1, name),
-                    statement_type = COALESCE($2, statement_type),
-                    source_signature = COALESCE($3, source_signature),
-                    mapping = COALESCE($4, mapping)
-                WHERE id = $5
-                RETURNING *
-            `, [
+            UPDATE column_mappings
+            SET
+                name = COALESCE($1, name),
+                statement_type = COALESCE($2, statement_type),
+                source_signature = COALESCE($3, source_signature),
+                mapping = COALESCE($4, mapping),
+                spam = COALESCE($5, spam)
+            WHERE id = $6
+            RETURNING *
+        `, [
                 name,
                 statement_type,
                 source_signature,
                 mapping !== undefined ? JSON.stringify(mapping) : null,
+                spam !== undefined ? spam : null,
                 req.params.column_mappingid
             ]);
 

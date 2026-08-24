@@ -2,6 +2,10 @@ const db = require("../../db_connection");
 
 const reportController = {
 
+    // ============================================================
+    // GET ALL REPORTS
+    // ============================================================
+
     async getReports(req, res) {
         try {
             const result = await db.query(`
@@ -18,6 +22,10 @@ const reportController = {
         }
     },
 
+
+    // ============================================================
+    // GET ONE REPORT
+    // ============================================================
 
     async getReport(req, res) {
         try {
@@ -42,6 +50,10 @@ const reportController = {
     },
 
 
+    // ============================================================
+    // CREATE REPORT
+    // ============================================================
+
     async addReport(req, res) {
         try {
             const {
@@ -50,8 +62,21 @@ const reportController = {
                 kind,
                 storage_path,
                 generated_by,
-                is_current = true
+                is_current = true,
+                spam = false
             } = req.body;
+
+
+            // ====================================================
+            // VALIDATE SPAM
+            // ====================================================
+
+            if (typeof spam !== "boolean") {
+                return res.status(400).json({
+                    error: "spam must be true or false"
+                });
+            }
+
 
             const result = await db.query(`
                 INSERT INTO reports (
@@ -60,9 +85,10 @@ const reportController = {
                     kind,
                     storage_path,
                     generated_by,
-                    is_current
+                    is_current,
+                    spam
                 )
-                VALUES ($1, $2, $3, $4, $5, $6)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 RETURNING *
             `, [
                 period,
@@ -70,7 +96,8 @@ const reportController = {
                 kind,
                 storage_path,
                 generated_by || null,
-                is_current
+                is_current,
+                spam
             ]);
 
             res.status(201).json(result.rows[0]);
@@ -82,6 +109,15 @@ const reportController = {
     },
 
 
+    // ============================================================
+    // UPDATE REPORT
+    //
+    // Can update:
+    // - all normal fields
+    // - only spam
+    // - normal fields + spam
+    // ============================================================
+
     async updateReport(req, res) {
         try {
             const {
@@ -90,8 +126,24 @@ const reportController = {
                 kind,
                 storage_path,
                 generated_by,
-                is_current
+                is_current,
+                spam
             } = req.body;
+
+
+            // ====================================================
+            // VALIDATE SPAM
+            // ====================================================
+
+            if (
+                spam !== undefined &&
+                typeof spam !== "boolean"
+            ) {
+                return res.status(400).json({
+                    error: "spam must be true or false"
+                });
+            }
+
 
             const result = await db.query(`
                 UPDATE reports
@@ -101,16 +153,18 @@ const reportController = {
                     kind = COALESCE($3, kind),
                     storage_path = COALESCE($4, storage_path),
                     generated_by = COALESCE($5, generated_by),
-                    is_current = COALESCE($6, is_current)
-                WHERE id = $7
+                    is_current = COALESCE($6, is_current),
+                    spam = COALESCE($7, spam)
+                WHERE id = $8
                 RETURNING *
             `, [
-                period,
-                project_id,
-                kind,
-                storage_path,
-                generated_by,
-                is_current,
+                period ?? null,
+                project_id ?? null,
+                kind ?? null,
+                storage_path ?? null,
+                generated_by ?? null,
+                is_current ?? null,
+                spam !== undefined ? spam : null,
                 req.params.reportid
             ]);
 
@@ -128,6 +182,10 @@ const reportController = {
         }
     },
 
+
+    // ============================================================
+    // DELETE REPORT
+    // ============================================================
 
     async deleteReport(req, res) {
         try {

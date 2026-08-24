@@ -81,7 +81,8 @@ const expenseController = {
                     approved_at,
                     created_at,
                     updated_at,
-                    deleted_at
+                    deleted_at,
+                    spam
                  FROM expenses
                  WHERE deleted_at IS NULL
                  ORDER BY document_date DESC, created_at DESC`
@@ -148,7 +149,8 @@ const expenseController = {
                     approved_at,
                     created_at,
                     updated_at,
-                    deleted_at
+                    deleted_at,
+                    spam
                  FROM expenses
                  WHERE id = $1
                    AND deleted_at IS NULL`,
@@ -212,7 +214,8 @@ const expenseController = {
             coverage_state = "unmatched",
             notes,
             status = "draft",
-            created_by
+            created_by,
+            spam = false
         } = req.body;
 
 
@@ -252,7 +255,11 @@ const expenseController = {
                 });
             }
 
-            if (!VALID_FX_SOURCES.includes(fx_source) && fx_source !== undefined && fx_source !== null) {
+            if (
+                !VALID_FX_SOURCES.includes(fx_source) &&
+                fx_source !== undefined &&
+                fx_source !== null
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -286,6 +293,19 @@ const expenseController = {
 
 
             // ====================================================
+            // SPAM VALIDATION
+            // ====================================================
+
+            if (typeof spam !== "boolean") {
+
+                return res.status(400).json({
+                    success: false,
+                    error: "spam must be a boolean"
+                });
+            }
+
+
+            // ====================================================
             // AMOUNT VALIDATION
             // ====================================================
 
@@ -304,7 +324,7 @@ const expenseController = {
 
             const finalPaidAmount =
                 paid_amount === undefined ||
-                paid_amount === null
+                    paid_amount === null
                     ? gross_amount
                     : paid_amount;
 
@@ -343,7 +363,8 @@ const expenseController = {
                     coverage_state,
                     notes,
                     status,
-                    created_by
+                    created_by,
+                    spam
                 )
                 VALUES (
                     $1,
@@ -374,7 +395,8 @@ const expenseController = {
                     $26,
                     $27,
                     $28,
-                    $29
+                    $29,
+                    $30
                 )
                 RETURNING *`,
                 [
@@ -406,7 +428,8 @@ const expenseController = {
                     coverage_state,
                     notes || null,
                     status,
-                    created_by || null
+                    created_by || null,
+                    spam
                 ]
             );
 
@@ -463,11 +486,16 @@ const expenseController = {
             payment_method,
             coverage_state,
             notes,
-            status
+            status,
+            spam
         } = req.body;
 
 
         try {
+
+            // ====================================================
+            // VALIDATE ENUMS
+            // ====================================================
 
             if (
                 document_type !== undefined &&
@@ -530,6 +558,26 @@ const expenseController = {
             }
 
 
+            // ====================================================
+            // SPAM VALIDATION
+            // ====================================================
+
+            if (
+                spam !== undefined &&
+                typeof spam !== "boolean"
+            ) {
+
+                return res.status(400).json({
+                    success: false,
+                    error: "spam must be a boolean"
+                });
+            }
+
+
+            // ====================================================
+            // AMOUNT VALIDATION
+            // ====================================================
+
             if (
                 gross_amount !== undefined &&
                 Number(gross_amount) <= 0
@@ -541,6 +589,10 @@ const expenseController = {
                 });
             }
 
+
+            // ====================================================
+            // UPDATE
+            // ====================================================
 
             const result = await db.query(
                 `UPDATE expenses
@@ -572,8 +624,9 @@ const expenseController = {
                     coverage_state = COALESCE($25, coverage_state),
                     notes = COALESCE($26, notes),
                     status = COALESCE($27, status),
+                    spam = COALESCE($28, spam),
                     updated_at = NOW()
-                 WHERE id = $28
+                 WHERE id = $29
                    AND deleted_at IS NULL
                  RETURNING *`,
                 [
@@ -604,6 +657,7 @@ const expenseController = {
                     coverage_state ?? null,
                     notes ?? null,
                     status ?? null,
+                    spam ?? null,
                     expenseid
                 ]
             );

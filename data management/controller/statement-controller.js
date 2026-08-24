@@ -42,6 +42,7 @@ const statementController = {
                     storage_path,
                     transaction_count,
                     is_locked,
+                    spam,
                     uploaded_by,
                     created_at
                  FROM statements
@@ -91,6 +92,7 @@ const statementController = {
                     storage_path,
                     transaction_count,
                     is_locked,
+                    spam,
                     uploaded_by,
                     created_at
                  FROM statements
@@ -141,7 +143,8 @@ const statementController = {
             column_mapping_id,
             file_name,
             storage_path,
-            uploaded_by
+            uploaded_by,
+            spam = false
         } = req.body;
 
 
@@ -206,6 +209,19 @@ const statementController = {
 
 
             // ====================================================
+            // VALIDATE SPAM
+            // ====================================================
+
+            if (typeof spam !== "boolean") {
+
+                return res.status(400).json({
+                    success: false,
+                    error: "spam must be true or false"
+                });
+            }
+
+
+            // ====================================================
             // INSERT
             // ====================================================
 
@@ -225,7 +241,8 @@ const statementController = {
                     column_mapping_id,
                     file_name,
                     storage_path,
-                    uploaded_by
+                    uploaded_by,
+                    spam
                 )
                 VALUES (
                     $1,
@@ -242,7 +259,8 @@ const statementController = {
                     $12,
                     $13,
                     $14,
-                    $15
+                    $15,
+                    $16
                 )
                 RETURNING *`,
                 [
@@ -260,7 +278,8 @@ const statementController = {
                     column_mapping_id || null,
                     file_name || null,
                     storage_path || null,
-                    uploaded_by || null
+                    uploaded_by || null,
+                    spam
                 ]
             );
 
@@ -284,6 +303,11 @@ const statementController = {
 
     // ============================================================
     // UPDATE STATEMENT
+    //
+    // Can update:
+    // - all normal fields
+    // - only spam
+    // - normal fields + spam
     // ============================================================
 
     async updateStatement(req, res) {
@@ -304,18 +328,19 @@ const statementController = {
             source,
             column_mapping_id,
             file_name,
-            storage_path
+            storage_path,
+            spam
         } = req.body;
 
 
         try {
 
             // ====================================================
-            // CHECK IF LOCKED
+            // CHECK IF EXISTS
             // ====================================================
 
             const existing = await db.query(
-                `SELECT is_locked
+                `SELECT *
                  FROM statements
                  WHERE id = $1`,
                 [statementid]
@@ -330,6 +355,10 @@ const statementController = {
             }
 
 
+            // ====================================================
+            // CHECK IF LOCKED
+            // ====================================================
+
             if (existing.rows[0].is_locked) {
 
                 return res.status(403).json({
@@ -341,7 +370,7 @@ const statementController = {
 
 
             // ====================================================
-            // VALIDATE
+            // VALIDATE STATEMENT TYPE
             // ====================================================
 
             if (
@@ -356,6 +385,10 @@ const statementController = {
             }
 
 
+            // ====================================================
+            // VALIDATE SOURCE
+            // ====================================================
+
             if (
                 source !== undefined &&
                 !VALID_SOURCES.includes(source)
@@ -368,6 +401,10 @@ const statementController = {
             }
 
 
+            // ====================================================
+            // VALIDATE PERIOD
+            // ====================================================
+
             if (
                 period !== undefined &&
                 !/^\d{4}-(0[1-9]|1[0-2])$/.test(period)
@@ -376,6 +413,22 @@ const statementController = {
                 return res.status(400).json({
                     success: false,
                     error: "period must use YYYY-MM format"
+                });
+            }
+
+
+            // ====================================================
+            // VALIDATE SPAM
+            // ====================================================
+
+            if (
+                spam !== undefined &&
+                typeof spam !== "boolean"
+            ) {
+
+                return res.status(400).json({
+                    success: false,
+                    error: "spam must be true or false"
                 });
             }
 
@@ -430,9 +483,12 @@ const statementController = {
                         COALESCE($13, file_name),
 
                     storage_path =
-                        COALESCE($14, storage_path)
+                        COALESCE($14, storage_path),
 
-                 WHERE id = $15
+                    spam =
+                        COALESCE($15, spam)
+
+                 WHERE id = $16
 
                  RETURNING *`,
                 [
@@ -450,6 +506,7 @@ const statementController = {
                     column_mapping_id ?? null,
                     file_name ?? null,
                     storage_path ?? null,
+                    spam ?? null,
                     statementid
                 ]
             );

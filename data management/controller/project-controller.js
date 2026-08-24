@@ -2,6 +2,10 @@ const db = require("../../db_connection");
 
 const projectController = {
 
+    // ============================================================
+    // GET ALL PROJECTS
+    // ============================================================
+
     async getProjects(req, res) {
         try {
             const result = await db.query(`
@@ -18,6 +22,10 @@ const projectController = {
         }
     },
 
+
+    // ============================================================
+    // GET ONE PROJECT
+    // ============================================================
 
     async getProject(req, res) {
         try {
@@ -42,6 +50,10 @@ const projectController = {
     },
 
 
+    // ============================================================
+    // CREATE PROJECT
+    // ============================================================
+
     async addProject(req, res) {
         try {
             const {
@@ -50,8 +62,21 @@ const projectController = {
                 status = "active",
                 start_date,
                 end_date,
-                notes
+                notes,
+                spam = false
             } = req.body;
+
+
+            // ====================================================
+            // VALIDATE SPAM
+            // ====================================================
+
+            if (typeof spam !== "boolean") {
+                return res.status(400).json({
+                    error: "spam must be true or false"
+                });
+            }
+
 
             const result = await db.query(`
                 INSERT INTO projects (
@@ -60,9 +85,10 @@ const projectController = {
                     status,
                     start_date,
                     end_date,
-                    notes
+                    notes,
+                    spam
                 )
-                VALUES ($1, $2, $3, $4, $5, $6)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 RETURNING *
             `, [
                 name,
@@ -70,7 +96,8 @@ const projectController = {
                 status,
                 start_date || null,
                 end_date || null,
-                notes || null
+                notes || null,
+                spam
             ]);
 
             res.status(201).json(result.rows[0]);
@@ -82,6 +109,15 @@ const projectController = {
     },
 
 
+    // ============================================================
+    // UPDATE PROJECT
+    //
+    // Can update:
+    // - all normal fields
+    // - only spam
+    // - normal fields + spam
+    // ============================================================
+
     async updateProject(req, res) {
         try {
             const {
@@ -90,8 +126,24 @@ const projectController = {
                 status,
                 start_date,
                 end_date,
-                notes
+                notes,
+                spam
             } = req.body;
+
+
+            // ====================================================
+            // VALIDATE SPAM
+            // ====================================================
+
+            if (
+                spam !== undefined &&
+                typeof spam !== "boolean"
+            ) {
+                return res.status(400).json({
+                    error: "spam must be true or false"
+                });
+            }
+
 
             const result = await db.query(`
                 UPDATE projects
@@ -101,16 +153,18 @@ const projectController = {
                     status = COALESCE($3, status),
                     start_date = COALESCE($4, start_date),
                     end_date = COALESCE($5, end_date),
-                    notes = COALESCE($6, notes)
-                WHERE id = $7
+                    notes = COALESCE($6, notes),
+                    spam = COALESCE($7, spam)
+                WHERE id = $8
                 RETURNING *
             `, [
-                name,
-                code,
-                status,
-                start_date,
-                end_date,
-                notes,
+                name ?? null,
+                code ?? null,
+                status ?? null,
+                start_date ?? null,
+                end_date ?? null,
+                notes ?? null,
+                spam !== undefined ? spam : null,
                 req.params.projectid
             ]);
 
@@ -128,6 +182,10 @@ const projectController = {
         }
     },
 
+
+    // ============================================================
+    // DELETE PROJECT
+    // ============================================================
 
     async deleteProject(req, res) {
         try {

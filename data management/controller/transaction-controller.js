@@ -139,7 +139,8 @@ const transactionController = {
             status = "unmatched",
             coverage_state = "unmatched",
             ignore_reason,
-            row_hash
+            row_hash,
+            spam = false
         } = req.body;
 
 
@@ -197,6 +198,19 @@ const transactionController = {
                     error:
                         "Invalid coverage_state. Allowed values: " +
                         VALID_COVERAGE_STATES.join(", ")
+                });
+            }
+
+
+            // ====================================================
+            // VALIDATE SPAM
+            // ====================================================
+
+            if (typeof spam !== "boolean") {
+
+                return res.status(400).json({
+                    success: false,
+                    error: "spam must be true or false"
                 });
             }
 
@@ -260,7 +274,8 @@ const transactionController = {
                     status,
                     coverage_state,
                     ignore_reason,
-                    row_hash
+                    row_hash,
+                    spam
                 )
                 VALUES (
                     $1,
@@ -279,7 +294,8 @@ const transactionController = {
                     $14,
                     $15,
                     $16,
-                    $17
+                    $17,
+                    $18
                 )
                 RETURNING *`,
                 [
@@ -299,7 +315,8 @@ const transactionController = {
                     status,
                     coverage_state,
                     ignore_reason || null,
-                    row_hash
+                    row_hash,
+                    spam
                 ]
             );
 
@@ -314,7 +331,6 @@ const transactionController = {
             console.error(err);
 
             // Duplicate row_hash
-
             if (err.code === "23505") {
 
                 return res.status(409).json({
@@ -334,6 +350,11 @@ const transactionController = {
 
     // ============================================================
     // UPDATE TRANSACTION
+    //
+    // Can update:
+    // - all normal fields
+    // - only spam
+    // - normal fields + spam
     // ============================================================
 
     async updateTransaction(req, res) {
@@ -356,7 +377,8 @@ const transactionController = {
             status,
             coverage_state,
             ignore_reason,
-            row_hash
+            row_hash,
+            spam
         } = req.body;
 
 
@@ -410,6 +432,22 @@ const transactionController = {
                 return res.status(400).json({
                     success: false,
                     error: "Invalid coverage_state"
+                });
+            }
+
+
+            // ====================================================
+            // VALIDATE SPAM
+            // ====================================================
+
+            if (
+                spam !== undefined &&
+                typeof spam !== "boolean"
+            ) {
+
+                return res.status(400).json({
+                    success: false,
+                    error: "spam must be true or false"
                 });
             }
 
@@ -484,9 +522,12 @@ const transactionController = {
                         COALESCE($15, ignore_reason),
 
                     row_hash =
-                        COALESCE($16, row_hash)
+                        COALESCE($16, row_hash),
 
-                 WHERE id = $17
+                    spam =
+                        COALESCE($17, spam)
+
+                 WHERE id = $18
 
                  RETURNING *`,
                 [
@@ -506,6 +547,7 @@ const transactionController = {
                     coverage_state ?? null,
                     ignore_reason ?? null,
                     row_hash ?? null,
+                    spam ?? null,
                     transactionid
                 ]
             );

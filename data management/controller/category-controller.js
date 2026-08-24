@@ -6,6 +6,7 @@ const categoryController = {
             const result = await db.query(`
                 SELECT *
                 FROM categories
+                WHERE spam = FALSE
                 ORDER BY sort_order ASC, name ASC
             `);
 
@@ -16,12 +17,14 @@ const categoryController = {
             res.status(500).json({ error: err.message });
         }
     },
+
     async getCategory(req, res) {
         try {
             const result = await db.query(`
                 SELECT *
                 FROM categories
                 WHERE id = $1
+                  AND spam = FALSE
             `, [req.params.categoryid]);
 
             if (result.rows.length === 0) {
@@ -37,13 +40,15 @@ const categoryController = {
             res.status(500).json({ error: err.message });
         }
     },
+
     async addCategory(req, res) {
         try {
             const {
                 name,
                 is_vat_deductible_default = true,
                 sort_order = 0,
-                is_active = true
+                is_active = true,
+                spam = false
             } = req.body;
 
             const result = await db.query(`
@@ -51,15 +56,17 @@ const categoryController = {
                     name,
                     is_vat_deductible_default,
                     sort_order,
-                    is_active
+                    is_active,
+                    spam
                 )
-                VALUES ($1, $2, $3, $4)
+                VALUES ($1, $2, $3, $4, $5)
                 RETURNING *
             `, [
                 name,
                 is_vat_deductible_default,
                 sort_order,
-                is_active
+                is_active,
+                spam
             ]);
 
             res.status(201).json(result.rows[0]);
@@ -69,30 +76,34 @@ const categoryController = {
             res.status(500).json({ error: err.message });
         }
     },
+
     async updateCategory(req, res) {
         try {
             const {
                 name,
                 is_vat_deductible_default,
                 sort_order,
-                is_active
+                is_active,
+                spam
             } = req.body;
 
             const result = await db.query(`
-                UPDATE categories
-                SET
-                    name = COALESCE($1, name),
-                    is_vat_deductible_default =
-                        COALESCE($2, is_vat_deductible_default),
-                    sort_order = COALESCE($3, sort_order),
-                    is_active = COALESCE($4, is_active)
-                WHERE id = $5
-                RETURNING *
-            `, [
+            UPDATE categories
+            SET
+                name = COALESCE($1, name),
+                is_vat_deductible_default =
+                    COALESCE($2, is_vat_deductible_default),
+                sort_order = COALESCE($3, sort_order),
+                is_active = COALESCE($4, is_active),
+                spam = COALESCE($5, spam)
+            WHERE id = $6
+            RETURNING *
+        `, [
                 name,
                 is_vat_deductible_default,
                 sort_order,
                 is_active,
+                spam !== undefined ? spam : null,
                 req.params.categoryid
             ]);
 
@@ -109,6 +120,7 @@ const categoryController = {
             res.status(500).json({ error: err.message });
         }
     },
+
     async deleteCategory(req, res) {
         try {
             const result = await db.query(`
