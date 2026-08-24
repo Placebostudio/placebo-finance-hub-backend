@@ -5,6 +5,7 @@ const reportRouter = new Router()
 
 reportRouter.get("/", reportController.getReports)
 reportRouter.get("/:reportid", reportController.getReport)
+reportRouter.get("/expense-ledger", reportController.getExpenseLedger)
 reportRouter.post("/", reportController.addReport)
 reportRouter.put("/:reportid", reportController.updateReport)
 reportRouter.delete("/:reportid", reportController.deleteReport)
