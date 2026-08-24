@@ -273,7 +273,7 @@ exports.documentController = {
            spam = COALESCE($10, spam),
            deleted_at = COALESCE($11, deleted_at),
            updated_at = NOW()
-         WHERE id = $11
+         WHERE id = $12
            AND deleted_at IS NULL
          RETURNING
            id,

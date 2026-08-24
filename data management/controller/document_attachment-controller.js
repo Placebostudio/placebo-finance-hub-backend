@@ -685,7 +685,7 @@ const document_attachmentController = {
                     duration_ms,
                     is_current,
                     created_at
-                 FROM document_document_attachments
+                 FROM document_extractions
                  WHERE document_id = $1
                  ORDER BY created_at DESC`,
                 [req.params.document_attachmentid]
@@ -782,7 +782,7 @@ const document_attachmentController = {
             // ====================================================
 
             await db.query(
-                `UPDATE document_document_attachments
+                `UPDATE document_extractions
                  SET is_current = FALSE
                  WHERE document_id = $1
                    AND is_current = TRUE`,
@@ -795,7 +795,7 @@ const document_attachmentController = {
             // ====================================================
 
             const result = await db.query(
-                `INSERT INTO document_document_attachments (
+                `INSERT INTO document_extractions (
                     document_id,
                     method,
                     fields,
@@ -887,7 +887,7 @@ const document_attachmentController = {
                     duration_ms,
                     is_current,
                     created_at
-                 FROM document_document_attachments
+                 FROM document_extractions
                  WHERE document_id = $1
                    AND is_current = TRUE
                  LIMIT 1`,
