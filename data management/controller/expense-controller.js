@@ -42,50 +42,61 @@ const expenseController = {
 
     async getExpenses(req, res) {
 
+        const {
+            vendor_id
+        } = req.query;
+
         try {
 
             const result = await db.query(
                 `SELECT
-                    id,
-                    expense_no,
-                    document_id,
-                    project_id,
-                    vendor_id,
-                    vendor_name,
-                    document_type,
-                    document_number,
-                    document_date,
-                    due_date,
-                    currency,
-                    country_code,
-                    net_amount,
-                    vat_amount,
-                    vat_rate,
-                    gross_amount,
-                    paid_amount,
-                    fx_rate,
-                    fx_date,
-                    fx_source,
-                    gross_amount_sek,
-                    paid_amount_sek,
-                    vat_amount_sek,
-                    is_reverse_charge,
-                    is_vat_deductible,
-                    category_id,
-                    payment_method,
-                    coverage_state,
-                    notes,
-                    status,
-                    created_by,
-                    approved_by,
-                    approved_at,
-                    created_at,
-                    updated_at,
-                    deleted_at,
-                    spam
-                 FROM expenses
-                 WHERE deleted_at IS NULL
-                 ORDER BY document_date DESC, created_at DESC`
+                id,
+                expense_no,
+                document_id,
+                project_id,
+                vendor_id,
+                vendor_name,
+                document_type,
+                document_number,
+                document_date,
+                due_date,
+                currency,
+                country_code,
+                net_amount,
+                vat_amount,
+                vat_rate,
+                gross_amount,
+                paid_amount,
+                fx_rate,
+                fx_date,
+                fx_source,
+                gross_amount_sek,
+                paid_amount_sek,
+                vat_amount_sek,
+                is_reverse_charge,
+                is_vat_deductible,
+                category_id,
+                payment_method,
+                coverage_state,
+                notes,
+                status,
+                created_by,
+                approved_by,
+                approved_at,
+                created_at,
+                updated_at,
+                deleted_at,
+                spam
+             FROM expenses
+             WHERE deleted_at IS NULL
+               AND (
+                    $1::uuid IS NULL
+                    OR vendor_id = $1
+               )
+             ORDER BY document_date DESC, created_at DESC`,
+                [
+                    vendor_id || null
+                ]
             );
 
             return res.json(result.rows);

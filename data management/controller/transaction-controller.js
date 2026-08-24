@@ -25,11 +25,41 @@ const transactionController = {
 
         try {
 
+            const { statement_id } = req.query;
+
+
+            // ========================================================
+            // GET ALL / FILTER BY STATEMENT
+            // ========================================================
+
+            let query = `
+            SELECT *
+            FROM transactions
+        `;
+
+            const params = [];
+
+
+            if (statement_id) {
+
+                query += `
+                WHERE statement_id = $1
+            `;
+
+                params.push(statement_id);
+            }
+
+
+            query += `
+            ORDER BY transaction_date DESC, line_no ASC
+        `;
+
+
             const result = await db.query(
-                `SELECT *
-                 FROM transactions
-                 ORDER BY transaction_date DESC, line_no ASC`
+                query,
+                params
             );
+
 
             return res.json(result.rows);
 

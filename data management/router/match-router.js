@@ -1,14 +1,16 @@
-const { Router } = require("express")
-const { matchController } = require("../controller/match-controller.js")
+const { Router } = require("express");
 
-const matchRouter = new Router()
+const { matchController } =
+    require("../controller/match-controller.js");
 
-matchRouter.get("/", matchController.getMatches)
-matchRouter.get("/:matchid", matchController.getMatch)
-matchRouter.get("/:expenseid", matchController.getMatchesByExpense)
-matchRouter.get("/:transactionid", matchController.getMatchesByTransaction)
-matchRouter.post("/", matchController.addMatch)
-matchRouter.put("/:matchid", matchController.updateMatch)
-matchRouter.delete("/:matchid", matchController.deleteMatch)
+const matchRouter = new Router();
 
-module.exports = { matchRouter }
+matchRouter.get("/", matchController.getMatches);
+matchRouter.get("/expense/:expenseid", matchController.getMatchesByExpense);
+matchRouter.get("/transaction/:transactionid", matchController.getMatchesByTransaction);
+matchRouter.get("/:matchid", matchController.getMatch);
+matchRouter.post("/", matchController.addMatch);
+matchRouter.put("/:matchid", matchController.updateMatch);
+matchRouter.delete("/:matchid", matchController.deleteMatch);
+
+module.exports = { matchRouter };
