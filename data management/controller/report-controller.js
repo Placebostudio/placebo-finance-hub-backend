@@ -35,6 +35,18 @@ const reportController = {
     // ============================================================
 
     async getReport(req, res) {
+        // ============================================================
+        // SPECIAL REPORT: EXPENSE LEDGER
+        // ============================================================
+
+        if (req.params.reportid === "expense-ledger") {
+
+            return reportController.getExpenseLedger(
+                req,
+                res
+            );
+        }
+
         try {
             const result = await db.query(`
                 SELECT *
@@ -237,12 +249,13 @@ const reportController = {
     //   search          free-text (vendor_name, document_number, txn description)
     //   receipt_status  attached | missing
     // ============================================================
-    
+
     async getExpenseLedger(req, res) {
         try {
 
             const result = await db.query(`
             SELECT
+
                 -- ====================================================
                 -- EXPENSE
                 -- ====================================================
@@ -291,21 +304,32 @@ const reportController = {
                 -- DOCUMENT
                 -- ====================================================
 
-                d.id AS document_id,
+                d.id AS linked_document_id,
+                d.document_no AS linked_document_no,
                 d.file_name AS document_file_name,
+                d.file_type AS document_file_type,
+                d.file_size AS document_file_size,
                 d.storage_path AS document_storage_path,
-                d.document_type AS linked_document_type,
-                d.document_number AS linked_document_number,
-                d.document_date AS linked_document_date,
+                d.checksum_sha256 AS document_checksum,
+                d.page_count AS document_page_count,
+                d.status AS document_status,
+                d.extraction_status AS document_extraction_status,
+                d.notes AS document_notes,
+                d.uploaded_by AS document_uploaded_by,
+                d.uploaded_at AS document_uploaded_at,
 
                 -- ====================================================
                 -- MATCH
                 -- ====================================================
 
                 m.id AS match_id,
+                m.allocated_amount AS match_allocated_amount,
+                m.score AS match_score,
+                m.match_type,
+                m.reasons AS match_reasons,
                 m.status AS match_status,
-                m.match_score,
-                m.is_confirmed AS match_confirmed,
+                m.confirmed_by AS match_confirmed_by,
+                m.confirmed_at AS match_confirmed_at,
 
                 -- ====================================================
                 -- TRANSACTION
@@ -332,38 +356,66 @@ const reportController = {
                 -- STATEMENT
                 -- ====================================================
 
-                s.id AS statement_id,
+                s.id AS linked_statement_id,
                 s.statement_type,
                 s.period AS statement_period_value,
                 s.account_label,
                 s.account_ref,
                 s.period_from,
                 s.period_to,
+                s.opening_balance,
+                s.closing_balance,
+                s.total_amount,
                 s.source AS statement_source,
-                s.file_name AS statement_file_name
+                s.file_name AS statement_file_name,
+                s.storage_path AS statement_storage_path,
+                s.transaction_count AS statement_transaction_count,
+                s.is_locked AS statement_is_locked
 
             FROM expenses e
 
-            -- Category
+            -- ====================================================
+            -- CATEGORY
+            -- ====================================================
+
             LEFT JOIN categories c
                 ON c.id = e.category_id
 
-            -- Supporting document
+            -- ====================================================
+            -- SUPPORTING DOCUMENT
+            -- ====================================================
+
             LEFT JOIN documents d
                 ON d.id = e.document_id
+                AND d.deleted_at IS NULL
+                AND d.spam = false
 
-            -- Expense ↔ transaction match
+            -- ====================================================
+            -- CONFIRMED MATCH
+            -- ====================================================
+
             LEFT JOIN matches m
                 ON m.expense_id = e.id
-                AND m.is_confirmed = true
+                AND m.status = 'confirmed'
+                AND m.spam = false
 
-            -- Matched transaction
+            -- ====================================================
+            -- MATCHED TRANSACTION
+            -- ====================================================
+
             LEFT JOIN transactions t
                 ON t.id = m.transaction_id
 
-            -- Bank / credit-card statement
+            -- ====================================================
+            -- BANK / CREDIT CARD STATEMENT
+            -- ====================================================
+
             LEFT JOIN statements s
                 ON s.id = t.statement_id
+
+            -- ====================================================
+            -- APPROVED EXPENSES ONLY
+            -- ====================================================
 
             WHERE
                 e.deleted_at IS NULL
