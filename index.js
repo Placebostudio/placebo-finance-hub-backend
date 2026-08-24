@@ -13,6 +13,9 @@ const documentRouter = documentModule.documentRouter;
 const documentAttachmentModule = require("./data management/router/document_attachment-router.js");
 const document_attachmentRouter =
     documentAttachmentModule.document_attachmentRouter;
+const documentExtractionModule = require("./data management/router/document_extraction-router.js");
+const document_extractionRouter =
+    documentExtractionModule.document_extractionRouter;
 const expenseModule = require("./data management/router/expense-router.js");
 const expenseRouter = expenseModule.expenseRouter;
 const statementModule = require("./data management/router/statement-router.js");
@@ -84,8 +87,9 @@ server.on('error', (err) => {
 });
 
 app.use("/api/users", userRouter)
-app.use("/api/document_attachments", document_attachmentRouter)
 app.use("/api/documents", documentRouter)
+app.use("/api/document_attachments", document_attachmentRouter)
+app.use("/api/document_extractions", document_extractionRouter)
 app.use("/api/expenses", expenseRouter)
 app.use("/api/statements", statementRouter)
 app.use("/api/transactions", transactionRouter)

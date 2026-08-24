@@ -10,18 +10,19 @@ exports.userController = {
     try {
       const result = await db.query(
         `SELECT
-          id,
-          email,
-          full_name,
-          role,
-          is_active,
-          invited_by,
-          invited_at,
-          accepted_at,
-          last_login_at,
-          created_at
-        FROM users
-        ORDER BY created_at DESC`
+        id,
+        username,
+        email,
+        full_name,
+        role,
+        is_active,
+        invited_by,
+        invited_at,
+        accepted_at,
+        last_login_at,
+        created_at
+      FROM users
+      ORDER BY created_at DESC`
       );
 
       return res.json(result.rows);
@@ -35,8 +36,6 @@ exports.userController = {
       });
     }
   },
-
-
   // ============================================================
   // GET ONE USER
   // ============================================================
@@ -46,18 +45,19 @@ exports.userController = {
     try {
       const result = await db.query(
         `SELECT
-          id,
-          email,
-          full_name,
-          role,
-          is_active,
-          invited_by,
-          invited_at,
-          accepted_at,
-          last_login_at,
-          created_at
-        FROM users
-        WHERE id = $1`,
+        id,
+        username,
+        email,
+        full_name,
+        role,
+        is_active,
+        invited_by,
+        invited_at,
+        accepted_at,
+        last_login_at,
+        created_at
+      FROM users
+      WHERE id = $1`,
         [userid]
       );
 
@@ -181,38 +181,42 @@ exports.userController = {
   // and verifies that the application account is active.
   // ============================================================
   async login(req, res) {
-    const { userid } = req.body;
+
+    const { username, password } = req.body;
 
     try {
-      if (!userid) {
+
+      if (!username || !password) {
         return res.status(400).json({
           success: false,
-          error: "userid is required"
+          error: "username and password are required"
         });
       }
 
       const result = await db.query(
         `SELECT
-          id,
-          email,
-          full_name,
-          role,
-          is_active,
-          invited_by,
-          invited_at,
-          accepted_at,
-          last_login_at,
-          created_at
-        FROM users
-        WHERE id = $1
-        LIMIT 1`,
-        [userid]
+        id,
+        username,
+        email,
+        full_name,
+        role,
+        is_active,
+        invited_by,
+        invited_at,
+        accepted_at,
+        last_login_at,
+        created_at
+      FROM users
+      WHERE username = $1
+        AND password = $2
+      LIMIT 1`,
+        [username, password]
       );
 
       if (result.rows.length === 0) {
-        return res.status(404).json({
+        return res.status(401).json({
           success: false,
-          error: "User profile not found"
+          error: "Invalid username or password"
         });
       }
 
@@ -236,8 +240,8 @@ exports.userController = {
 
       await db.query(
         `UPDATE users
-         SET last_login_at = now()
-         WHERE id = $1`,
+       SET last_login_at = now()
+       WHERE id = $1`,
         [user.id]
       );
 
@@ -249,6 +253,7 @@ exports.userController = {
       });
 
     } catch (err) {
+
       console.error(err);
 
       return res.status(500).json({

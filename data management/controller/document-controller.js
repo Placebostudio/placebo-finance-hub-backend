@@ -23,7 +23,8 @@ exports.documentController = {
           uploaded_by,
           uploaded_at,
           updated_at,
-          deleted_at
+          deleted_at,
+          spam
         FROM documents
         WHERE deleted_at IS NULL
         ORDER BY uploaded_at DESC`
@@ -65,7 +66,8 @@ exports.documentController = {
           uploaded_by,
           uploaded_at,
           updated_at,
-          deleted_at
+          deleted_at,
+          spam
         FROM documents
         WHERE id = $1
           AND deleted_at IS NULL`,
@@ -107,7 +109,8 @@ exports.documentController = {
       status = "pending_review",
       extraction_status = "uploaded",
       notes,
-      uploaded_by
+      uploaded_by,
+      spam = false
     } = req.body;
 
     try {
@@ -134,6 +137,13 @@ exports.documentController = {
         });
       }
 
+      if (typeof spam !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          error: "spam must be true or false"
+        });
+      }
+
       const result = await db.query(
         `INSERT INTO documents (
           file_name,
@@ -145,7 +155,8 @@ exports.documentController = {
           status,
           extraction_status,
           notes,
-          uploaded_by
+          uploaded_by,
+          spam
         )
         VALUES (
           $1,
@@ -157,7 +168,8 @@ exports.documentController = {
           $7,
           $8,
           $9,
-          $10
+          $10,
+          $11
         )
         RETURNING
           id,
@@ -174,7 +186,8 @@ exports.documentController = {
           uploaded_by,
           uploaded_at,
           updated_at,
-          deleted_at`,
+          deleted_at,
+          spam`,
         [
           file_name,
           file_type,
@@ -185,7 +198,8 @@ exports.documentController = {
           status,
           extraction_status,
           notes ?? null,
-          uploaded_by
+          uploaded_by,
+          spam
         ]
       );
 
@@ -207,6 +221,9 @@ exports.documentController = {
 
   // ============================================================
   // UPDATE DOCUMENT
+  //
+  // Can update any normal editable fields.
+  // spam can also be updated by itself.
   // ============================================================
   async updateDocument(req, res) {
     const { documentid } = req.params;
@@ -220,7 +237,9 @@ exports.documentController = {
       page_count,
       status,
       extraction_status,
-      notes
+      notes,
+      spam,
+      deleted_at
     } = req.body;
 
     try {
@@ -229,6 +248,13 @@ exports.documentController = {
         return res.status(400).json({
           success: false,
           error: "File size cannot exceed 20MB"
+        });
+      }
+
+      if (spam !== undefined && typeof spam !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          error: "spam must be true or false"
         });
       }
 
@@ -244,8 +270,10 @@ exports.documentController = {
            status = COALESCE($7, status),
            extraction_status = COALESCE($8, extraction_status),
            notes = COALESCE($9, notes),
+           spam = COALESCE($10, spam),
+           deleted_at = COALESCE($11, deleted_at),
            updated_at = NOW()
-         WHERE id = $10
+         WHERE id = $11
            AND deleted_at IS NULL
          RETURNING
            id,
@@ -262,7 +290,8 @@ exports.documentController = {
            uploaded_by,
            uploaded_at,
            updated_at,
-           deleted_at`,
+           deleted_at,
+           spam`,
         [
           file_name ?? null,
           file_type ?? null,
@@ -273,6 +302,8 @@ exports.documentController = {
           status ?? null,
           extraction_status ?? null,
           notes ?? null,
+          spam ?? null,
+          deleted_at ?? null,
           documentid
         ]
       );
@@ -301,7 +332,7 @@ exports.documentController = {
 
 
   // ============================================================
-  // SOFT DELETE DOCUMENT
+  // DELETE DOCUMENT — PERMANENT
   // ============================================================
   async deleteDocument(req, res) {
     const { documentid } = req.params;
@@ -309,17 +340,13 @@ exports.documentController = {
     try {
 
       const result = await db.query(
-        `UPDATE documents
-         SET
-           deleted_at = NOW(),
-           updated_at = NOW()
+        `DELETE FROM documents
          WHERE id = $1
-           AND deleted_at IS NULL
          RETURNING
            id,
            document_no,
            file_name,
-           deleted_at`,
+           spam`,
         [documentid]
       );
 
@@ -377,7 +404,8 @@ exports.documentController = {
            uploaded_by,
            uploaded_at,
            updated_at,
-           deleted_at`,
+           deleted_at,
+           spam`,
         [documentid]
       );
 
