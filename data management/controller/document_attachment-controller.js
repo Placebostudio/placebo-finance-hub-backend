@@ -7,7 +7,8 @@ const supabase = createClient(
     process.env.SUPABASE_SECRET_KEY
 );
 
-const BUCKET_NAME = "documents";
+const BUCKET_NAME = "finance-hub";
+const STORAGE_FOLDER = "files";
 
 const ALLOWED_TYPES = [
     "image/jpeg",
@@ -272,7 +273,7 @@ const document_attachmentController = {
                 `${Date.now()}-${req.file.originalname}`;
 
             const storagePath =
-                `documents/${documentId}/${fileName}`;
+                `${STORAGE_FOLDER}/${documentId}/${fileName}`;
 
 
             // ====================================================

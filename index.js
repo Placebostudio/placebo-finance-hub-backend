@@ -43,14 +43,6 @@ const auditLogModule = require("./data management/router/audit_log-router.js");
 const audit_logRouter = auditLogModule.audit_logRouter;
 
 
-
-
-
-
-
-
-
-
 process.on("uncaughtException", (err) => {
     console.error("UNCAUGHT: ", err);
 });

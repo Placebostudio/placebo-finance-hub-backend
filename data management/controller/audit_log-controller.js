@@ -36,7 +36,7 @@ exports.audit_logController = {
             values.push(user);
 
             conditions.push(
-                `LOWER(a.user_id::text) = LOWER($${values.length})`
+                `LOWER(a.actor_id::text) = LOWER($${values.length})`
             );
         }
 
@@ -138,7 +138,7 @@ exports.audit_logController = {
                 u.role AS role
             FROM audit_logs a
             LEFT JOIN users u
-                ON a.user_id = u.id
+                ON a.actor_id = u.id
             ${whereClause}
             ORDER BY a.created_at DESC
             `,
@@ -186,7 +186,7 @@ exports.audit_logController = {
         const db = require("../../db_connection");
 
         const {
-            user_id,
+            actor_id,
             action,
             entity_type,
             entity_id,
@@ -198,7 +198,7 @@ exports.audit_logController = {
         try {
             const result = await db.query(
                 `INSERT INTO audit_logs (
-                user_id,
+                actor_id,
                 action,
                 entity_type,
                 entity_id,
@@ -209,7 +209,7 @@ exports.audit_logController = {
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *`,
                 [
-                    user_id,
+                    actor_id,
                     action,
                     entity_type,
                     entity_id,
@@ -236,7 +236,7 @@ exports.audit_logController = {
         const { auditlogid } = req.params;
 
         const {
-            user_id,
+            actor_id,
             action,
             entity_type,
             entity_id,
@@ -249,7 +249,7 @@ exports.audit_logController = {
             const result = await db.query(
                 `UPDATE audit_logs
              SET
-                user_id = $1,
+                actor_id = $1,
                 action = $2,
                 entity_type = $3,
                 entity_id = $4,
@@ -259,7 +259,7 @@ exports.audit_logController = {
              WHERE id = $8
              RETURNING *`,
                 [
-                    user_id,
+                    actor_id,
                     action,
                     entity_type,
                     entity_id,
