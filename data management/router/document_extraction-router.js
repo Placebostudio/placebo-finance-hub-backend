@@ -13,10 +13,10 @@ const upload = multer({
 });
 
 document_extractionRouter.get('/', documentExtractionController.getDocumentExtractions);
-document_extractionRouter.get('/:document_extractionid', documentExtractionController.getDocumentExtraction);
+document_extractionRouter.get('/:documentextractionid', documentExtractionController.getDocumentExtraction);
 document_extractionRouter.post('/', upload.single('file'), documentExtractionController.addDocumentExtraction);
-document_extractionRouter.put('/:document_extractionid', documentExtractionController.updateDocumentExtraction);
-document_extractionRouter.delete('/:document_extractionid', documentExtractionController.deleteDocumentExtraction);
+document_extractionRouter.put('/:documentextractionid', documentExtractionController.updateDocumentExtraction);
+document_extractionRouter.delete('/:documentextractionid', documentExtractionController.deleteDocumentExtraction);
 
 module.exports = {
     document_extractionRouter

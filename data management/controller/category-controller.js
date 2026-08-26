@@ -3,12 +3,29 @@ const db = require("../../db_connection");
 const categoryController = {
     async getCategories(req, res) {
         try {
-            const result = await db.query(`
-                SELECT *
-                FROM categories
-                WHERE spam = FALSE
-                ORDER BY sort_order ASC, name ASC
-            `);
+            const { is_active } = req.query;
+
+            let query = `
+            SELECT *
+            FROM categories
+            WHERE spam = FALSE
+        `;
+
+            const values = [];
+
+            if (is_active === "true" || is_active === "false") {
+                values.push(is_active === "true");
+
+                query += `
+                AND is_active = $${values.length}
+            `;
+            }
+
+            query += `
+            ORDER BY sort_order ASC, name ASC
+        `;
+
+            const result = await db.query(query, values);
 
             res.json(result.rows);
 

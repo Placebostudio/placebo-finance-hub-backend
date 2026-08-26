@@ -4,6 +4,7 @@ const { expenseController } = require("../controller/expense-controller.js")
 const expenseRouter = new Router()
 
 expenseRouter.get("/", expenseController.getExpenses)
+expenseRouter.get("/document/:documentid",expenseController.getExpenseByDocumentId);
 expenseRouter.get("/:expenseid", expenseController.getExpense)
 expenseRouter.post("/", expenseController.addExpense)
 expenseRouter.put("/:expenseid", expenseController.updateExpense)

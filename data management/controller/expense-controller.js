@@ -41,13 +41,12 @@ const expenseController = {
     // ============================================================
 
     async getExpenses(req, res) {
-
         const {
-            vendor_id
+            vendor_id,
+            period
         } = req.query;
 
         try {
-
             const result = await db.query(
                 `SELECT
                 id,
@@ -93,16 +92,20 @@ const expenseController = {
                     $1::uuid IS NULL
                     OR vendor_id = $1
                )
+               AND (
+                    $2::text IS NULL
+                    OR TO_CHAR(document_date, 'YYYY-MM') = $2
+               )
              ORDER BY document_date DESC, created_at DESC`,
                 [
-                    vendor_id || null
+                    vendor_id || null,
+                    period || null
                 ]
             );
 
             return res.json(result.rows);
 
         } catch (err) {
-
             console.error(err);
 
             return res.status(500).json({
@@ -184,6 +187,36 @@ const expenseController = {
 
             return res.status(500).json({
                 success: false,
+                error: err.message
+            });
+        }
+    },
+
+    async getExpenseByDocumentId(req, res) {
+        try {
+
+            const result = await db.query(`
+            SELECT *
+            FROM expenses
+            WHERE document_id = $1
+            LIMIT 1
+        `, [
+                req.params.documentid
+            ]);
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({
+                    error: "Expense not found"
+                });
+            }
+
+            res.json(result.rows[0]);
+
+        } catch (err) {
+
+            console.error(err);
+
+            res.status(500).json({
                 error: err.message
             });
         }

@@ -108,7 +108,7 @@ const vendorController = {
                 RETURNING *
             `, [
                 name,
-                normalized_name,
+                normalized_name ?? null,
                 JSON.stringify(aliases),
                 default_category_id || null,
                 default_vat_rate ?? null,

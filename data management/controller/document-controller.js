@@ -36,27 +36,45 @@ exports.documentController = {
 
   async getDocuments(req, res) {
     try {
+      const {
+        status
+      } = req.query;
+
+      const values = [];
+      const conditions = [
+        "deleted_at IS NULL"
+      ];
+
+      if (status) {
+        values.push(status);
+
+        conditions.push(
+          `status = $${values.length}`
+        );
+      }
+
       const result = await db.query(
         `SELECT
-                    id,
-                    document_no,
-                    file_name,
-                    file_type,
-                    file_size,
-                    storage_path,
-                    checksum_sha256,
-                    page_count,
-                    status,
-                    extraction_status,
-                    notes,
-                    uploaded_by,
-                    uploaded_at,
-                    updated_at,
-                    deleted_at,
-                    spam
-                 FROM documents
-                 WHERE deleted_at IS NULL
-                 ORDER BY uploaded_at DESC`
+          id,
+          document_no,
+          file_name,
+          file_type,
+          file_size,
+          storage_path,
+          checksum_sha256,
+          page_count,
+          status,
+          extraction_status,
+          notes,
+          uploaded_by,
+          uploaded_at,
+          updated_at,
+          deleted_at,
+          spam
+       FROM documents
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY uploaded_at DESC`,
+        values
       );
 
       return res.json(result.rows);
@@ -117,13 +135,20 @@ exports.documentController = {
 
       const document = result.rows[0];
 
-      const { data } = supabase.storage
+      const { data, error } = await supabase.storage
         .from(BUCKET_NAME)
-        .getPublicUrl(document.storage_path);
+        .createSignedUrl(
+          document.storage_path,
+          60 * 10
+        );
+
+      if (error) {
+        throw error;
+      }
 
       return res.json({
         ...document,
-        url: data.publicUrl
+        url: data.signedUrl
       });
 
     } catch (err) {
@@ -403,9 +428,16 @@ exports.documentController = {
       // PUBLIC URL
       // ----------------------------------------------------
 
-      const { data } = supabase.storage
+      const { data, error } = await supabase.storage
         .from(BUCKET_NAME)
-        .getPublicUrl(storagePath);
+        .createSignedUrl(
+          storagePath,
+          60 * 10
+        );
+
+      if (error) {
+        throw error;
+      }
 
 
       // ----------------------------------------------------
@@ -418,7 +450,7 @@ exports.documentController = {
 
         document: {
           ...result.rows[0],
-          url: data.publicUrl
+          url: data.signedUrl
         }
 
       });

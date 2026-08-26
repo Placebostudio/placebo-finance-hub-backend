@@ -251,15 +251,18 @@ const reportController = {
     // ============================================================
 
     async getExpenseLedger(req, res) {
+        const {
+            period,
+            payment_method,
+            receipt_status,
+            coverage_state,
+            search
+        } = req.query;
+
         try {
-
-            const result = await db.query(`
+            const result = await db.query(
+                `
             SELECT
-
-                -- ====================================================
-                -- EXPENSE
-                -- ====================================================
-
                 e.id AS expense_id,
                 e.expense_no,
                 e.document_id,
@@ -293,16 +296,8 @@ const reportController = {
                 e.approved_by,
                 e.approved_at,
 
-                -- ====================================================
-                -- CATEGORY
-                -- ====================================================
-
                 c.id AS category_id,
                 c.name AS category_name,
-
-                -- ====================================================
-                -- DOCUMENT
-                -- ====================================================
 
                 d.id AS linked_document_id,
                 d.document_no AS linked_document_no,
@@ -318,10 +313,6 @@ const reportController = {
                 d.uploaded_by AS document_uploaded_by,
                 d.uploaded_at AS document_uploaded_at,
 
-                -- ====================================================
-                -- MATCH
-                -- ====================================================
-
                 m.id AS match_id,
                 m.allocated_amount AS match_allocated_amount,
                 m.score AS match_score,
@@ -330,10 +321,6 @@ const reportController = {
                 m.status AS match_status,
                 m.confirmed_by AS match_confirmed_by,
                 m.confirmed_at AS match_confirmed_at,
-
-                -- ====================================================
-                -- TRANSACTION
-                -- ====================================================
 
                 t.id AS transaction_id,
                 t.statement_id,
@@ -351,10 +338,6 @@ const reportController = {
                 t.billed_currency,
                 t.status AS transaction_status,
                 t.coverage_state AS transaction_coverage_state,
-
-                -- ====================================================
-                -- STATEMENT
-                -- ====================================================
 
                 s.id AS linked_statement_id,
                 s.statement_type,
@@ -374,62 +357,79 @@ const reportController = {
 
             FROM expenses e
 
-            -- ====================================================
-            -- CATEGORY
-            -- ====================================================
-
             LEFT JOIN categories c
                 ON c.id = e.category_id
-
-            -- ====================================================
-            -- SUPPORTING DOCUMENT
-            -- ====================================================
 
             LEFT JOIN documents d
                 ON d.id = e.document_id
                 AND d.deleted_at IS NULL
                 AND d.spam = false
 
-            -- ====================================================
-            -- CONFIRMED MATCH
-            -- ====================================================
-
             LEFT JOIN matches m
                 ON m.expense_id = e.id
                 AND m.status = 'confirmed'
                 AND m.spam = false
 
-            -- ====================================================
-            -- MATCHED TRANSACTION
-            -- ====================================================
-
             LEFT JOIN transactions t
                 ON t.id = m.transaction_id
 
-            -- ====================================================
-            -- BANK / CREDIT CARD STATEMENT
-            -- ====================================================
-
             LEFT JOIN statements s
                 ON s.id = t.statement_id
-
-            -- ====================================================
-            -- APPROVED EXPENSES ONLY
-            -- ====================================================
 
             WHERE
                 e.deleted_at IS NULL
                 AND e.status = 'approved'
 
+                AND (
+                    $1::text IS NULL
+                     OR TO_CHAR(e.document_date, 'YYYY-MM') = $1::text
+                )
+
+                AND (
+                    $2::text IS NULL
+                    OR e.payment_method::text = $2::text
+                )
+
+                AND (
+                    $3::text IS NULL
+                    OR (
+                        $3::text = 'attached'
+                    AND d.id IS NOT NULL
+                    )
+                    OR (
+                    $3::text = 'missing'
+                    AND d.id IS NULL
+                    )
+                )
+
+                AND (
+                     $4::text IS NULL
+                    OR e.coverage_state::text = $4::text
+                )
+
+                AND (
+                    $5::text IS NULL
+                    OR LOWER(e.vendor_name) LIKE LOWER('%' || $5::text || '%')
+                    OR LOWER(e.document_number) LIKE LOWER('%' || $5::text || '%')
+                    OR LOWER(t.description) LIKE LOWER('%' || $5::text || '%')
+                )
+
             ORDER BY
                 e.document_date DESC,
                 e.created_at DESC
-        `);
+            `,
+                [
+                    period || null,
+                    payment_method || null,
+                    receipt_status || null,
+                    coverage_state || null,
+                    search || null
+                ]
+            );
 
             return res.json(result.rows);
 
         } catch (err) {
-
             console.error(err);
 
             return res.status(500).json({
