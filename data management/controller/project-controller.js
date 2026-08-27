@@ -7,18 +7,48 @@ const projectController = {
     // ============================================================
 
     async getProjects(req, res) {
+
         try {
-            const result = await db.query(`
-                SELECT *
-                FROM projects
-                ORDER BY name ASC
-            `);
+
+            const { spam } = req.query;
+
+            let query = `
+            SELECT *
+            FROM projects
+            WHERE 1 = 1
+        `;
+
+            const params = [];
+
+            if (spam !== undefined) {
+
+                params.push(
+                    spam === "true"
+                );
+
+                query += `
+                AND spam = $${params.length}
+            `;
+            }
+
+            query += `
+            ORDER BY name ASC
+        `;
+
+            const result = await db.query(
+                query,
+                params
+            );
 
             res.json(result.rows);
 
         } catch (err) {
+
             console.error(err);
-            res.status(500).json({ error: err.message });
+
+            res.status(500).json({
+                error: err.message
+            });
         }
     },
 

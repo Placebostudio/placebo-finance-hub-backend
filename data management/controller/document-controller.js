@@ -35,17 +35,22 @@ exports.documentController = {
   // ============================================================
 
   async getDocuments(req, res) {
+
     try {
+
       const {
-        status
+        status,
+        spam
       } = req.query;
 
       const values = [];
+
       const conditions = [
         "deleted_at IS NULL"
       ];
 
       if (status) {
+
         values.push(status);
 
         conditions.push(
@@ -53,27 +58,38 @@ exports.documentController = {
         );
       }
 
+      if (spam === "true" || spam === "false") {
+
+        values.push(
+          spam === "true"
+        );
+
+        conditions.push(
+          `spam = $${values.length}`
+        );
+      }
+
       const result = await db.query(
         `SELECT
-          id,
-          document_no,
-          file_name,
-          file_type,
-          file_size,
-          storage_path,
-          checksum_sha256,
-          page_count,
-          status,
-          extraction_status,
-          notes,
-          uploaded_by,
-          uploaded_at,
-          updated_at,
-          deleted_at,
-          spam
-       FROM documents
-       WHERE ${conditions.join(" AND ")}
-       ORDER BY uploaded_at DESC`,
+                id,
+                document_no,
+                file_name,
+                file_type,
+                file_size,
+                storage_path,
+                checksum_sha256,
+                page_count,
+                status,
+                extraction_status,
+                notes,
+                uploaded_by,
+                uploaded_at,
+                updated_at,
+                deleted_at,
+                spam
+             FROM documents
+             WHERE ${conditions.join(" AND ")}
+             ORDER BY uploaded_at DESC`,
         values
       );
 
@@ -89,7 +105,6 @@ exports.documentController = {
       });
     }
   },
-
 
   // ============================================================
   // GET ONE DOCUMENT

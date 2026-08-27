@@ -23,10 +23,46 @@ const matchController = {
 
         try {
 
+            const {
+                status,
+                spam
+            } = req.query;
+
+            let query = `
+            SELECT *
+            FROM matches
+            WHERE 1 = 1
+        `;
+
+            const params = [];
+
+            if (status) {
+
+                params.push(status);
+
+                query += `
+                AND status = $${params.length}
+            `;
+            }
+
+            if (spam !== undefined) {
+
+                params.push(
+                    spam === "true"
+                );
+
+                query += `
+                AND spam = $${params.length}
+            `;
+            }
+
+            query += `
+            ORDER BY created_at DESC
+        `;
+
             const result = await db.query(
-                `SELECT *
-                 FROM matches
-                 ORDER BY created_at DESC`
+                query,
+                params
             );
 
             return res.json(result.rows);

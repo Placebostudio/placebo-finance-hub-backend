@@ -14,18 +14,48 @@ const reportController = {
     // ============================================================
 
     async getReports(req, res) {
+
         try {
-            const result = await db.query(`
-                SELECT *
-                FROM reports
-                ORDER BY generated_at DESC
-            `);
+
+            const { spam } = req.query;
+
+            let query = `
+            SELECT *
+            FROM reports
+            WHERE 1 = 1
+        `;
+
+            const params = [];
+
+            if (spam !== undefined) {
+
+                params.push(
+                    spam === "true"
+                );
+
+                query += `
+                AND spam = $${params.length}
+            `;
+            }
+
+            query += `
+            ORDER BY generated_at DESC
+        `;
+
+            const result = await db.query(
+                query,
+                params
+            );
 
             res.json(result.rows);
 
         } catch (err) {
+
             console.error(err);
-            res.status(500).json({ error: err.message });
+
+            res.status(500).json({
+                error: err.message
+            });
         }
     },
 

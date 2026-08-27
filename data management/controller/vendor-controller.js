@@ -7,13 +7,53 @@ const vendorController = {
     // ============================================================
 
     async getVendors(req, res) {
+
         try {
 
-            const result = await db.query(`
-                SELECT *
-                FROM vendors
-                ORDER BY name ASC
-            `);
+            const {
+                spam,
+                is_active
+            } = req.query;
+
+            const conditions = [];
+            const values = [];
+
+            if (spam === "true" || spam === "false") {
+
+                values.push(
+                    spam === "true"
+                );
+
+                conditions.push(
+                    `spam = $${values.length}`
+                );
+            }
+
+            if (is_active === "true" || is_active === "false") {
+
+                values.push(
+                    is_active === "true"
+                );
+
+                conditions.push(
+                    `is_active = $${values.length}`
+                );
+            }
+
+            const whereClause =
+                conditions.length > 0
+                    ? `WHERE ${conditions.join(" AND ")}`
+                    : "";
+
+            const result = await db.query(
+                `
+            SELECT *
+            FROM vendors
+            ${whereClause}
+            ORDER BY name ASC
+            `,
+                values
+            );
 
             res.json(result.rows);
 

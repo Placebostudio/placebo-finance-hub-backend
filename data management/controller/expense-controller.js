@@ -41,12 +41,15 @@ const expenseController = {
     // ============================================================
 
     async getExpenses(req, res) {
+
         const {
             vendor_id,
-            period
+            period,
+            spam
         } = req.query;
 
         try {
+
             const result = await db.query(
                 `SELECT
                 id,
@@ -96,16 +99,24 @@ const expenseController = {
                     $2::text IS NULL
                     OR TO_CHAR(document_date, 'YYYY-MM') = $2
                )
+               AND (
+                    $3::boolean IS NULL
+                    OR spam = $3
+               )
              ORDER BY document_date DESC, created_at DESC`,
                 [
                     vendor_id || null,
-                    period || null
+                    period || null,
+                    spam === undefined
+                        ? null
+                        : spam === "true"
                 ]
             );
 
             return res.json(result.rows);
 
         } catch (err) {
+
             console.error(err);
 
             return res.status(500).json({

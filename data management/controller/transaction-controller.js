@@ -25,41 +25,54 @@ const transactionController = {
 
         try {
 
-            const { statement_id } = req.query;
-
-
-            // ========================================================
-            // GET ALL / FILTER BY STATEMENT
-            // ========================================================
+            const {
+                statement_id,
+                spam
+            } = req.query;
 
             let query = `
             SELECT *
             FROM transactions
         `;
 
+            const conditions = [];
             const params = [];
-
 
             if (statement_id) {
 
-                query += `
-                WHERE statement_id = $1
-            `;
-
                 params.push(statement_id);
+
+                conditions.push(
+                    `statement_id = $${params.length}`
+                );
             }
 
+            if (spam === "true" || spam === "false") {
+
+                params.push(
+                    spam === "true"
+                );
+
+                conditions.push(
+                    `spam = $${params.length}`
+                );
+            }
+
+            if (conditions.length > 0) {
+
+                query += `
+                WHERE ${conditions.join(" AND ")}
+            `;
+            }
 
             query += `
             ORDER BY transaction_date DESC, line_no ASC
         `;
 
-
             const result = await db.query(
                 query,
                 params
             );
-
 
             return res.json(result.rows);
 

@@ -7,27 +7,68 @@ exports.userController = {
   // GET ALL USERS
   // ============================================================
   async getUsers(req, res) {
+
     try {
+
+      const {
+        spam,
+        is_active
+      } = req.query;
+
+      const conditions = [];
+      const values = [];
+
+      if (spam === "true" || spam === "false") {
+
+        values.push(
+          spam === "true"
+        );
+
+        conditions.push(
+          `spam = $${values.length}`
+        );
+      }
+
+      if (is_active === "true" || is_active === "false") {
+
+        values.push(
+          is_active === "true"
+        );
+
+        conditions.push(
+          `is_active = $${values.length}`
+        );
+      }
+
+      const whereClause =
+        conditions.length > 0
+          ? `WHERE ${conditions.join(" AND ")}`
+          : "";
+
       const result = await db.query(
         `SELECT
-        id,
-        username,
-        email,
-        full_name,
-        role,
-        is_active,
-        invited_by,
-        invited_at,
-        accepted_at,
-        last_login_at,
-        created_at
-      FROM users
-      ORDER BY created_at DESC`
+                id,
+                username,
+                email,
+                full_name,
+                role,
+                is_active,
+                invited_by,
+                invited_at,
+                accepted_at,
+                last_login_at,
+                created_at,
+                spam
+             FROM users
+             ${whereClause}
+             ORDER BY created_at DESC`,
+        values
       );
 
       return res.json(result.rows);
 
     } catch (err) {
+
       console.error(err);
 
       return res.status(500).json({
@@ -36,6 +77,7 @@ exports.userController = {
       });
     }
   },
+  
   // ============================================================
   // GET ONE USER
   // ============================================================

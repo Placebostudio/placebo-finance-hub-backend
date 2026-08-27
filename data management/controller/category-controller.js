@@ -2,22 +2,41 @@ const db = require("../../db_connection");
 
 const categoryController = {
     async getCategories(req, res) {
+
         try {
-            const { is_active } = req.query;
+
+            const {
+                is_active,
+                spam
+            } = req.query;
 
             let query = `
             SELECT *
             FROM categories
-            WHERE spam = FALSE
+            WHERE 1 = 1
         `;
 
             const values = [];
 
             if (is_active === "true" || is_active === "false") {
-                values.push(is_active === "true");
+
+                values.push(
+                    is_active === "true"
+                );
 
                 query += `
                 AND is_active = $${values.length}
+            `;
+            }
+
+            if (spam === "true" || spam === "false") {
+
+                values.push(
+                    spam === "true"
+                );
+
+                query += `
+                AND spam = $${values.length}
             `;
             }
 
@@ -25,13 +44,20 @@ const categoryController = {
             ORDER BY sort_order ASC, name ASC
         `;
 
-            const result = await db.query(query, values);
+            const result = await db.query(
+                query,
+                values
+            );
 
             res.json(result.rows);
 
         } catch (err) {
+
             console.error(err);
-            res.status(500).json({ error: err.message });
+
+            res.status(500).json({
+                error: err.message
+            });
         }
     },
 
