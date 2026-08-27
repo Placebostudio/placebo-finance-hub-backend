@@ -101,7 +101,7 @@ const expenseController = {
                )
                AND (
                     $3::boolean IS NULL
-                    OR spam = $3
+                    OR COALESCE(spam, false) = $3
                )
              ORDER BY document_date DESC, created_at DESC`,
                 [

@@ -481,6 +481,62 @@ exports.documentController = {
     }
   },
 
+  async getDocumentFileUrl(req, res) {
+    try {
+      const { id } = req.params;
+
+      const result = await db.query(
+        `
+      SELECT storage_path
+      FROM documents
+      WHERE id = $1
+        AND deleted_at IS NULL
+      `,
+        [id]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: "Document not found"
+        });
+      }
+
+      const storagePath = result.rows[0].storage_path;
+
+      if (!storagePath) {
+        return res.status(404).json({
+          success: false,
+          error: "Document has no storage file"
+        });
+      }
+
+      const { data, error } = await supabase.storage
+        .from(BUCKET_NAME)
+        .createSignedUrl(
+          storagePath,
+          60 * 10
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      return res.json({
+        success: true,
+        url: data.signedUrl
+      });
+
+    } catch (err) {
+      console.error(err);
+
+      return res.status(500).json({
+        success: false,
+        error: err.message
+      });
+    }
+  },
+
 
   // ============================================================
   // CREATE DOCUMENT WITHOUT FILE UPLOAD
