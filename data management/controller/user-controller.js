@@ -135,39 +135,49 @@ exports.userController = {
   // Usually Supabase Auth creates the auth user first.
   // ============================================================
   async addUser(req, res) {
-
     const {
-      id,
       email,
+      username,
       full_name,
       password,
       role = "viewer",
-      invited_by
+      invited_by = null
     } = req.body;
 
     try {
-
-      if (!id || !email || !full_name || !password) {
+      if (!email || !username || !full_name || !password) {
         return res.status(400).json({
           success: false,
-          error: "id, email, full_name and password are required"
+          error: "email, username, full_name and password are required"
         });
       }
 
-      if (!VALID_ROLES.includes(role)) {
-        return res.status(400).json({
+      const normalizedRole =
+        String(role).trim().toLowerCase();
+
+      if (normalizedRole === "owner") {
+        return res.status(403).json({
           success: false,
-          error: `Invalid role. Allowed roles: ${VALID_ROLES.join(", ")}`
+          error: "Owner users cannot be created through this endpoint"
         });
       }
 
-      // Hash the plaintext password before storing it
+      const allowedRoles = ["manager", "viewer"];
+
+      if (!allowedRoles.includes(normalizedRole)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid role. Allowed roles: ${allowedRoles.join(", ")}`
+        });
+      }
+
       const passwordHash = await argon2.hash(password);
 
       const result = await db.query(
-        `INSERT INTO users (
-                id,
+        `
+            INSERT INTO public.users (
                 email,
+                username,
                 full_name,
                 password,
                 role,
@@ -190,6 +200,7 @@ exports.userController = {
             RETURNING
                 id,
                 email,
+                username,
                 full_name,
                 role,
                 is_active,
@@ -197,13 +208,14 @@ exports.userController = {
                 invited_at,
                 accepted_at,
                 last_login_at,
-                created_at`,
+                created_at
+            `,
         [
-          id,
-          email,
-          full_name,
+          email.trim(),
+          username.trim(),
+          full_name.trim(),
           passwordHash,
-          role,
+          normalizedRole,
           invited_by || null
         ]
       );
@@ -214,12 +226,18 @@ exports.userController = {
       });
 
     } catch (err) {
+      console.error("Failed to create user:", err);
 
-      console.error(err);
+      if (err.code === "23505") {
+        return res.status(409).json({
+          success: false,
+          error: "A user with this email or username already exists"
+        });
+      }
 
       return res.status(500).json({
         success: false,
-        error: err.message
+        error: err.message || "Failed to create user"
       });
     }
   },
