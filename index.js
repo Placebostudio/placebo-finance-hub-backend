@@ -4,6 +4,7 @@ const app = express()
 const fs = require("fs")
 const path = require("path")
 require("dotenv").config();
+const db = require("./db_connection");
 
 const userModule = require("./data management/router/user-router.js");
 const userRouter = userModule.userRouter;
@@ -75,6 +76,15 @@ server.on('error', (err) => {
     }
     process.exit(1);
 });
+const { cleanupOrphanedDocumentFiles } = require("./data management/cleanup-orphaned-document-files.js");
+
+cleanupOrphanedDocumentFiles(db)
+    .catch((err) => {
+        console.error(
+            "Orphaned document file cleanup failed:",
+            err
+        );
+    });
 
 app.use("/api/users", userRouter)
 app.use("/api/documents", documentRouter)
