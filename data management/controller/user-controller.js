@@ -135,19 +135,22 @@ exports.userController = {
   // Usually Supabase Auth creates the auth user first.
   // ============================================================
   async addUser(req, res) {
+
     const {
       id,
       email,
       full_name,
+      password,
       role = "viewer",
       invited_by
     } = req.body;
 
     try {
-      if (!id || !email || !full_name) {
+
+      if (!id || !email || !full_name || !password) {
         return res.status(400).json({
           success: false,
-          error: "id, email and full_name are required"
+          error: "id, email, full_name and password are required"
         });
       }
 
@@ -158,42 +161,48 @@ exports.userController = {
         });
       }
 
+      // Hash the plaintext password before storing it
+      const passwordHash = await argon2.hash(password);
+
       const result = await db.query(
         `INSERT INTO users (
-          id,
-          email,
-          full_name,
-          role,
-          is_active,
-          invited_by,
-          invited_at,
-          accepted_at
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          true,
-          $5,
-          now(),
-          NULL
-        )
-        RETURNING
-          id,
-          email,
-          full_name,
-          role,
-          is_active,
-          invited_by,
-          invited_at,
-          accepted_at,
-          last_login_at,
-          created_at`,
+                id,
+                email,
+                full_name,
+                password,
+                role,
+                is_active,
+                invited_by,
+                invited_at,
+                accepted_at
+            )
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                false,
+                $6,
+                now(),
+                NULL
+            )
+            RETURNING
+                id,
+                email,
+                full_name,
+                role,
+                is_active,
+                invited_by,
+                invited_at,
+                accepted_at,
+                last_login_at,
+                created_at`,
         [
           id,
           email,
           full_name,
+          passwordHash,
           role,
           invited_by || null
         ]
@@ -205,6 +214,7 @@ exports.userController = {
       });
 
     } catch (err) {
+
       console.error(err);
 
       return res.status(500).json({
