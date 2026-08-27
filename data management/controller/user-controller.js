@@ -1,8 +1,10 @@
 const db = require("../../db_connection");
+const argon2 = require("argon2");
 
 const VALID_ROLES = ["owner", "manager", "viewer"];
 
 exports.userController = {
+
   // ============================================================
   // GET ALL USERS
   // ============================================================
@@ -77,7 +79,7 @@ exports.userController = {
       });
     }
   },
-  
+
   // ============================================================
   // GET ONE USER
   // ============================================================
@@ -237,22 +239,22 @@ exports.userController = {
 
       const result = await db.query(
         `SELECT
-        id,
-        username,
-        email,
-        full_name,
-        role,
-        is_active,
-        invited_by,
-        invited_at,
-        accepted_at,
-        last_login_at,
-        created_at
-      FROM users
-      WHERE username = $1
-        AND password = $2
-      LIMIT 1`,
-        [username, password]
+                id,
+                username,
+                email,
+                full_name,
+                role,
+                is_active,
+                invited_by,
+                invited_at,
+                accepted_at,
+                last_login_at,
+                created_at,
+                password
+             FROM users
+             WHERE username = $1
+             LIMIT 1`,
+        [username]
       );
 
       if (result.rows.length === 0) {
@@ -263,6 +265,20 @@ exports.userController = {
       }
 
       const user = result.rows[0];
+
+      // Verify the entered password against
+      // the Argon2 hash stored in the database.
+      const passwordValid = await argon2.verify(
+        user.password,
+        password
+      );
+
+      if (!passwordValid) {
+        return res.status(401).json({
+          success: false,
+          error: "Invalid username or password"
+        });
+      }
 
       // Deactivated user
       if (!user.is_active) {
@@ -282,12 +298,15 @@ exports.userController = {
 
       await db.query(
         `UPDATE users
-       SET last_login_at = now()
-       WHERE id = $1`,
+             SET last_login_at = now()
+             WHERE id = $1`,
         [user.id]
       );
 
       user.last_login_at = new Date();
+
+      // Never return the password hash to the frontend
+      delete user.password;
 
       return res.json({
         success: true,

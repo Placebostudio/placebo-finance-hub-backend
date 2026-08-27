@@ -38,10 +38,8 @@ const reportModule = require("./data management/router/report-router.js");
 const reportRouter = reportModule.reportRouter;
 const currencyModule = require("./data management/router/currency-router.js");
 const currencyRouter = currencyModule.currencyRouter;
-
 const auditLogModule = require("./data management/router/audit_log-router.js");
 const audit_logRouter = auditLogModule.audit_logRouter;
-
 
 process.on("uncaughtException", (err) => {
     console.error("UNCAUGHT: ", err);
@@ -81,7 +79,7 @@ server.on('error', (err) => {
 app.use("/api/users", userRouter)
 app.use("/api/documents", documentRouter)
 app.use("/api/document_attachments", document_attachmentRouter)
-app.use("/api/document_extractions", document_extractionRouter)
+app.use("/api/document_exts", document_extractionRouter)
 app.use("/api/expenses", expenseRouter)
 app.use("/api/statements", statementRouter)
 app.use("/api/transactions", transactionRouter)
