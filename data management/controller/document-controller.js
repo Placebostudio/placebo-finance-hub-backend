@@ -811,15 +811,21 @@ exports.documentController = {
 
     try {
 
+      // ============================================================
+      // GET DOCUMENT
+      // ============================================================
+
       const result = await db.query(
-        `SELECT
-                    id,
-                    document_no,
-                    file_name,
-                    storage_path,
-                    spam
-                 FROM documents
-                 WHERE id = $1`,
+        `
+      SELECT
+        id,
+        document_no,
+        file_name,
+        storage_path,
+        spam
+      FROM documents
+      WHERE id = $1
+      `,
         [documentid]
       );
 
@@ -836,48 +842,121 @@ exports.documentController = {
       const document = result.rows[0];
 
 
-      // ----------------------------------------------------
-      // DELETE DATABASE ROW
-      // ----------------------------------------------------
-
-      await db.query(
-        `DELETE FROM documents
-                 WHERE id = $1`,
-        [documentid]
-      );
-
-
-      // ----------------------------------------------------
-      // DELETE STORAGE FILE
-      // ----------------------------------------------------
+      // ============================================================
+      // DELETE ALL STORAGE FILES
+      // ============================================================
 
       if (document.storage_path) {
 
+        /*
+         * Example:
+         *
+         * storage_path:
+         * documents/123/original.pdf
+         *
+         * We use everything before the filename as the folder:
+         *
+         * documents/123/
+         *
+         * Then list everything inside that folder and delete it.
+         */
+
+        const lastSlash =
+          document.storage_path.lastIndexOf("/");
+
+        const folder =
+          lastSlash >= 0
+            ? document.storage_path.substring(
+              0,
+              lastSlash + 1
+            )
+            : "";
+
+
+        // ----------------------------------------------------------
+        // LIST FILES IN DOCUMENT FOLDER
+        // ----------------------------------------------------------
+
         const {
-          error: storageError
+          data: files,
+          error: listError
         } = await supabase.storage
           .from(BUCKET_NAME)
-          .remove([
-            document.storage_path
-          ]);
+          .list(folder);
 
 
-        if (storageError) {
+        if (listError) {
 
           console.error(
-            "Storage deletion failed:",
-            storageError
+            "Storage listing failed:",
+            listError
           );
 
           return res.status(500).json({
             success: false,
             error:
-              "Document deleted from database but storage deletion failed",
-            document
+              "Failed to find document storage files"
           });
+        }
+
+
+        // ----------------------------------------------------------
+        // BUILD FULL STORAGE PATHS
+        // ----------------------------------------------------------
+
+        const storageFiles =
+          (files || []).map(
+            (file) =>
+              `${folder}${file.name}`
+          );
+
+
+        // ----------------------------------------------------------
+        // DELETE ALL FILES
+        // ----------------------------------------------------------
+
+        if (storageFiles.length > 0) {
+
+          const {
+            error: storageError
+          } = await supabase.storage
+            .from(BUCKET_NAME)
+            .remove(storageFiles);
+
+
+          if (storageError) {
+
+            console.error(
+              "Storage deletion failed:",
+              storageError
+            );
+
+            return res.status(500).json({
+              success: false,
+              error:
+                "Failed to delete document files from storage"
+            });
+          }
         }
       }
 
+
+      // ============================================================
+      // DELETE DATABASE ROW
+      // ============================================================
+
+      await db.query(
+        `
+      DELETE FROM documents
+      WHERE id = $1
+      `,
+        [documentid]
+      );
+
+
+      // ============================================================
+      // SUCCESS
+      // ============================================================
 
       return res.json({
 
@@ -886,21 +965,33 @@ exports.documentController = {
         deleted: true,
 
         document: {
-          id: document.id,
-          document_no: document.document_no,
-          file_name: document.file_name,
-          spam: document.spam
+          id:
+            document.id,
+
+          document_no:
+            document.document_no,
+
+          file_name:
+            document.file_name,
+
+          spam:
+            document.spam
         }
 
       });
 
     } catch (err) {
 
-      console.error(err);
+      console.error(
+        "Failed to permanently delete document:",
+        err
+      );
 
       return res.status(500).json({
         success: false,
-        error: err.message
+        error:
+          err.message ||
+          "Failed to delete document"
       });
     }
   },

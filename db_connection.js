@@ -6,7 +6,10 @@ const { Pool } = require("pg");
 const url = process.env.DATABASE_URL;
 
 const db = new Pool({
-    connectionString: url
+    connectionString: url,
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
 
 db.query("SELECT NOW()")
