@@ -6,6 +6,7 @@ const VALID_STATEMENT_TYPES = [
     "credit_card"
 ];
 
+
 const VALID_SOURCES = [
     "csv",
     "pdf",
@@ -23,30 +24,83 @@ const statementController = {
 
         try {
 
-            const result = await db.query(
-                `SELECT
+            const {
+                statement_type,
+                period,
+                source,
+                spam
+            } = req.query;
+
+            let query = `
+                SELECT
                     id,
                     statement_type,
                     period,
-                    account_label,
-                    account_ref,
-                    period_from,
-                    period_to,
-                    opening_balance,
-                    closing_balance,
-                    total_amount,
-                    settled_by_transaction_id,
                     source,
                     column_mapping_id,
                     file_name,
-                    storage_path,
                     transaction_count,
-                    is_locked,
-                    spam,
                     uploaded_by,
-                    created_at
-                 FROM statements
-                 ORDER BY period DESC, created_at DESC`
+                    created_at,
+                    spam
+                FROM statements
+            `;
+
+            const conditions = [];
+            const params = [];
+
+            if (statement_type) {
+
+                params.push(statement_type);
+
+                conditions.push(
+                    `statement_type = $${params.length}`
+                );
+            }
+
+            if (period) {
+
+                params.push(period);
+
+                conditions.push(
+                    `period = $${params.length}`
+                );
+            }
+
+            if (source) {
+
+                params.push(source);
+
+                conditions.push(
+                    `source = $${params.length}`
+                );
+            }
+
+            if (spam === "true" || spam === "false") {
+
+                params.push(
+                    spam === "true"
+                );
+
+                conditions.push(
+                    `spam = $${params.length}`
+                );
+            }
+
+            if (conditions.length > 0) {
+
+                query += `
+                    WHERE ${conditions.join(" AND ")}
+                `;
+            }
+
+            query += `
+                ORDER BY period DESC, created_at DESC
+            `;
+
+            const result = await db.query(
+                query,
+                params
             );
 
             return res.json(result.rows);
@@ -78,23 +132,13 @@ const statementController = {
                     id,
                     statement_type,
                     period,
-                    account_label,
-                    account_ref,
-                    period_from,
-                    period_to,
-                    opening_balance,
-                    closing_balance,
-                    total_amount,
-                    settled_by_transaction_id,
                     source,
                     column_mapping_id,
                     file_name,
-                    storage_path,
                     transaction_count,
-                    is_locked,
-                    spam,
                     uploaded_by,
-                    created_at
+                    created_at,
+                    spam
                  FROM statements
                  WHERE id = $1`,
                 [statementid]
@@ -131,18 +175,10 @@ const statementController = {
         const {
             statement_type,
             period,
-            account_label,
-            account_ref,
-            period_from,
-            period_to,
-            opening_balance,
-            closing_balance,
-            total_amount,
-            settled_by_transaction_id,
             source,
             column_mapping_id,
             file_name,
-            storage_path,
+            transaction_count = 0,
             uploaded_by,
             spam = false
         } = req.body;
@@ -154,7 +190,11 @@ const statementController = {
             // REQUIRED FIELDS
             // ====================================================
 
-            if (!statement_type || !period || !source) {
+            if (
+                !statement_type ||
+                !period ||
+                !source
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -168,7 +208,11 @@ const statementController = {
             // VALIDATE STATEMENT TYPE
             // ====================================================
 
-            if (!VALID_STATEMENT_TYPES.includes(statement_type)) {
+            if (
+                !VALID_STATEMENT_TYPES.includes(
+                    statement_type
+                )
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -183,7 +227,9 @@ const statementController = {
             // VALIDATE SOURCE
             // ====================================================
 
-            if (!VALID_SOURCES.includes(source)) {
+            if (
+                !VALID_SOURCES.includes(source)
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -198,7 +244,11 @@ const statementController = {
             // VALIDATE PERIOD
             // ====================================================
 
-            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
+            if (
+                !/^\d{4}-(0[1-9]|1[0-2])$/.test(
+                    period
+                )
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -209,14 +259,36 @@ const statementController = {
 
 
             // ====================================================
-            // VALIDATE SPAM
+            // VALIDATE TRANSACTION COUNT
             // ====================================================
 
-            if (typeof spam !== "boolean") {
+            if (
+                !Number.isInteger(
+                    Number(transaction_count)
+                ) ||
+                Number(transaction_count) < 0
+            ) {
 
                 return res.status(400).json({
                     success: false,
-                    error: "spam must be true or false"
+                    error:
+                        "transaction_count must be a non-negative integer"
+                });
+            }
+
+
+            // ====================================================
+            // VALIDATE SPAM
+            // ====================================================
+
+            if (
+                typeof spam !== "boolean"
+            ) {
+
+                return res.status(400).json({
+                    success: false,
+                    error:
+                        "spam must be true or false"
                 });
             }
 
@@ -229,18 +301,10 @@ const statementController = {
                 `INSERT INTO statements (
                     statement_type,
                     period,
-                    account_label,
-                    account_ref,
-                    period_from,
-                    period_to,
-                    opening_balance,
-                    closing_balance,
-                    total_amount,
-                    settled_by_transaction_id,
                     source,
                     column_mapping_id,
                     file_name,
-                    storage_path,
+                    transaction_count,
                     uploaded_by,
                     spam
                 )
@@ -252,32 +316,16 @@ const statementController = {
                     $5,
                     $6,
                     $7,
-                    $8,
-                    $9,
-                    $10,
-                    $11,
-                    $12,
-                    $13,
-                    $14,
-                    $15,
-                    $16
+                    $8
                 )
                 RETURNING *`,
                 [
                     statement_type,
                     period,
-                    account_label || null,
-                    account_ref || null,
-                    period_from || null,
-                    period_to || null,
-                    opening_balance ?? null,
-                    closing_balance ?? null,
-                    total_amount ?? null,
-                    settled_by_transaction_id || null,
                     source,
                     column_mapping_id || null,
                     file_name || null,
-                    storage_path || null,
+                    Number(transaction_count),
                     uploaded_by || null,
                     spam
                 ]
@@ -303,11 +351,6 @@ const statementController = {
 
     // ============================================================
     // UPDATE STATEMENT
-    //
-    // Can update:
-    // - all normal fields
-    // - only spam
-    // - normal fields + spam
     // ============================================================
 
     async updateStatement(req, res) {
@@ -317,18 +360,11 @@ const statementController = {
         const {
             statement_type,
             period,
-            account_label,
-            account_ref,
-            period_from,
-            period_to,
-            opening_balance,
-            closing_balance,
-            total_amount,
-            settled_by_transaction_id,
             source,
             column_mapping_id,
             file_name,
-            storage_path,
+            transaction_count,
+            uploaded_by,
             spam
         } = req.body;
 
@@ -336,7 +372,7 @@ const statementController = {
         try {
 
             // ====================================================
-            // CHECK IF EXISTS
+            // CHECK EXISTS
             // ====================================================
 
             const existing = await db.query(
@@ -346,25 +382,14 @@ const statementController = {
                 [statementid]
             );
 
-            if (existing.rows.length === 0) {
+            if (
+                existing.rows.length === 0
+            ) {
 
                 return res.status(404).json({
                     success: false,
-                    error: "Statement not found"
-                });
-            }
-
-
-            // ====================================================
-            // CHECK IF LOCKED
-            // ====================================================
-
-            if (existing.rows[0].is_locked) {
-
-                return res.status(403).json({
-                    success: false,
                     error:
-                        "Statement is locked and cannot be modified"
+                        "Statement not found"
                 });
             }
 
@@ -375,12 +400,15 @@ const statementController = {
 
             if (
                 statement_type !== undefined &&
-                !VALID_STATEMENT_TYPES.includes(statement_type)
+                !VALID_STATEMENT_TYPES.includes(
+                    statement_type
+                )
             ) {
 
                 return res.status(400).json({
                     success: false,
-                    error: "Invalid statement_type"
+                    error:
+                        "Invalid statement_type"
                 });
             }
 
@@ -391,28 +419,56 @@ const statementController = {
 
             if (
                 source !== undefined &&
-                !VALID_SOURCES.includes(source)
+                !VALID_SOURCES.includes(
+                    source
+                )
             ) {
 
                 return res.status(400).json({
                     success: false,
-                    error: "Invalid source"
+                    error:
+                        "Invalid source"
                 });
             }
 
 
             // ====================================================
             // VALIDATE PERIOD
-            // ====================================================
+            // ============================================================
 
             if (
                 period !== undefined &&
-                !/^\d{4}-(0[1-9]|1[0-2])$/.test(period)
+                !/^\d{4}-(0[1-9]|1[0-2])$/.test(
+                    period
+                )
             ) {
 
                 return res.status(400).json({
                     success: false,
-                    error: "period must use YYYY-MM format"
+                    error:
+                        "period must use YYYY-MM format"
+                });
+            }
+
+
+            // ====================================================
+            // VALIDATE TRANSACTION COUNT
+            // ====================================================
+
+            if (
+                transaction_count !== undefined &&
+                (
+                    !Number.isInteger(
+                        Number(transaction_count)
+                    ) ||
+                    Number(transaction_count) < 0
+                )
+            ) {
+
+                return res.status(400).json({
+                    success: false,
+                    error:
+                        "transaction_count must be a non-negative integer"
                 });
             }
 
@@ -428,7 +484,8 @@ const statementController = {
 
                 return res.status(400).json({
                     success: false,
-                    error: "spam must be true or false"
+                    error:
+                        "spam must be true or false"
                 });
             }
 
@@ -441,71 +498,66 @@ const statementController = {
                 `UPDATE statements
                  SET
                     statement_type =
-                        COALESCE($1, statement_type),
+                        COALESCE(
+                            $1,
+                            statement_type
+                        ),
 
                     period =
-                        COALESCE($2, period),
-
-                    account_label =
-                        COALESCE($3, account_label),
-
-                    account_ref =
-                        COALESCE($4, account_ref),
-
-                    period_from =
-                        COALESCE($5, period_from),
-
-                    period_to =
-                        COALESCE($6, period_to),
-
-                    opening_balance =
-                        COALESCE($7, opening_balance),
-
-                    closing_balance =
-                        COALESCE($8, closing_balance),
-
-                    total_amount =
-                        COALESCE($9, total_amount),
-
-                    settled_by_transaction_id =
                         COALESCE(
-                            $10,
-                            settled_by_transaction_id
+                            $2,
+                            period
                         ),
 
                     source =
-                        COALESCE($11, source),
+                        COALESCE(
+                            $3,
+                            source
+                        ),
 
                     column_mapping_id =
-                        COALESCE($12, column_mapping_id),
+                        COALESCE(
+                            $4,
+                            column_mapping_id
+                        ),
 
                     file_name =
-                        COALESCE($13, file_name),
+                        COALESCE(
+                            $5,
+                            file_name
+                        ),
 
-                    storage_path =
-                        COALESCE($14, storage_path),
+                    transaction_count =
+                        COALESCE(
+                            $6,
+                            transaction_count
+                        ),
+
+                    uploaded_by =
+                        COALESCE(
+                            $7,
+                            uploaded_by
+                        ),
 
                     spam =
-                        COALESCE($15, spam)
+                        COALESCE(
+                            $8,
+                            spam
+                        )
 
-                 WHERE id = $16
+                 WHERE id = $9
 
                  RETURNING *`,
                 [
                     statement_type ?? null,
                     period ?? null,
-                    account_label ?? null,
-                    account_ref ?? null,
-                    period_from ?? null,
-                    period_to ?? null,
-                    opening_balance ?? null,
-                    closing_balance ?? null,
-                    total_amount ?? null,
-                    settled_by_transaction_id ?? null,
                     source ?? null,
                     column_mapping_id ?? null,
                     file_name ?? null,
-                    storage_path ?? null,
+                    transaction_count !== undefined
+                        ? Number(transaction_count)
+                        : null,
+                    uploaded_by ?? null,
                     spam ?? null,
                     statementid
                 ]
@@ -530,74 +582,31 @@ const statementController = {
 
 
     // ============================================================
-    // LOCK STATEMENT
+    // DELETE STATEMENT
     // ============================================================
 
-    async lockStatement(req, res) {
+    async deleteStatement(req, res) {
 
         const { statementid } = req.params;
 
         try {
 
             const result = await db.query(
-                `UPDATE statements
-                 SET is_locked = true
+                `DELETE FROM statements
                  WHERE id = $1
                  RETURNING *`,
                 [statementid]
             );
 
 
-            if (result.rows.length === 0) {
+            if (
+                result.rows.length === 0
+            ) {
 
                 return res.status(404).json({
                     success: false,
-                    error: "Statement not found"
-                });
-            }
-
-
-            return res.json({
-                success: true,
-                statement: result.rows[0]
-            });
-
-        } catch (err) {
-
-            console.error(err);
-
-            return res.status(500).json({
-                success: false,
-                error: err.message
-            });
-        }
-    },
-
-
-    // ============================================================
-    // UNLOCK STATEMENT
-    // ============================================================
-
-    async unlockStatement(req, res) {
-
-        const { statementid } = req.params;
-
-        try {
-
-            const result = await db.query(
-                `UPDATE statements
-                 SET is_locked = false
-                 WHERE id = $1
-                 RETURNING *`,
-                [statementid]
-            );
-
-
-            if (result.rows.length === 0) {
-
-                return res.status(404).json({
-                    success: false,
-                    error: "Statement not found"
+                    error:
+                        "Statement not found"
                 });
             }
 

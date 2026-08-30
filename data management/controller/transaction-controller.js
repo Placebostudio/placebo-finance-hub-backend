@@ -8,6 +8,7 @@ const VALID_STATUSES = [
     "awaiting_receipt"
 ];
 
+
 const VALID_COVERAGE_STATES = [
     "unmatched",
     "partially_matched",
@@ -31,9 +32,9 @@ const transactionController = {
             } = req.query;
 
             let query = `
-            SELECT *
-            FROM transactions
-        `;
+                SELECT *
+                FROM transactions
+            `;
 
             const conditions = [];
             const params = [];
@@ -61,13 +62,13 @@ const transactionController = {
             if (conditions.length > 0) {
 
                 query += `
-                WHERE ${conditions.join(" AND ")}
-            `;
+                    WHERE ${conditions.join(" AND ")}
+                `;
             }
 
             query += `
-            ORDER BY transaction_date DESC, line_no ASC
-        `;
+                ORDER BY transaction_date DESC, line_no ASC
+            `;
 
             const result = await db.query(
                 query,
@@ -176,7 +177,6 @@ const transactionController = {
             counterparty_ref,
             original_amount,
             original_currency,
-            statement_fx_rate,
             billed_amount,
             billed_currency = "SEK",
             status = "unmatched",
@@ -311,7 +311,6 @@ const transactionController = {
                     counterparty_ref,
                     original_amount,
                     original_currency,
-                    statement_fx_rate,
                     billed_amount,
                     billed_currency,
                     status,
@@ -337,8 +336,7 @@ const transactionController = {
                     $14,
                     $15,
                     $16,
-                    $17,
-                    $18
+                    $17
                 )
                 RETURNING *`,
                 [
@@ -346,18 +344,17 @@ const transactionController = {
                     statement_period,
                     line_no ?? null,
                     transaction_date,
-                    posting_date || null,
+                    posting_date ?? null,
                     description,
                     normalized_description,
-                    counterparty_ref || null,
+                    counterparty_ref ?? null,
                     original_amount ?? null,
-                    original_currency || null,
-                    statement_fx_rate ?? null,
+                    original_currency ?? null,
                     billed_amount,
                     billed_currency,
                     status,
                     coverage_state,
-                    ignore_reason || null,
+                    ignore_reason ?? null,
                     row_hash,
                     spam
                 ]
@@ -373,7 +370,6 @@ const transactionController = {
 
             console.error(err);
 
-            // Duplicate row_hash
             if (err.code === "23505") {
 
                 return res.status(409).json({
@@ -392,12 +388,358 @@ const transactionController = {
 
 
     // ============================================================
-    // UPDATE TRANSACTION
+    // CREATE MANY TRANSACTIONS
     //
-    // Can update:
-    // - all normal fields
-    // - only spam
-    // - normal fields + spam
+    // Creates all transactions inside one database transaction.
+    // ============================================================
+
+    async createBulk(req, res) {
+
+        const client = await db.connect();
+
+        try {
+
+            const {
+                statementId,
+                statementPeriod,
+                transactions
+            } = req.body;
+
+
+            // ====================================================
+            // VALIDATE REQUEST
+            // ====================================================
+
+            if (!statementId) {
+
+                return res.status(400).json({
+                    success: false,
+                    error: "statementId is required"
+                });
+            }
+
+            if (!statementPeriod) {
+
+                return res.status(400).json({
+                    success: false,
+                    error: "statementPeriod is required"
+                });
+            }
+
+            if (
+                !Array.isArray(transactions) ||
+                transactions.length === 0
+            ) {
+
+                return res.status(400).json({
+                    success: false,
+                    error:
+                        "transactions must be a non-empty array"
+                });
+            }
+
+
+            // ====================================================
+            // CHECK STATEMENT EXISTS
+            // ====================================================
+
+            const statement = await client.query(
+                `SELECT id, period
+             FROM statements
+             WHERE id = $1`,
+                [statementId]
+            );
+
+            if (statement.rows.length === 0) {
+
+                return res.status(404).json({
+                    success: false,
+                    error: "Statement not found"
+                });
+            }
+
+
+            // ====================================================
+            // CHECK PERIOD MATCHES STATEMENT
+            // ====================================================
+
+            if (statement.rows[0].period !== statementPeriod) {
+
+                return res.status(400).json({
+                    success: false,
+                    error:
+                        "statementPeriod does not match statement period"
+                });
+            }
+
+
+            // ====================================================
+            // START DATABASE TRANSACTION
+            // ====================================================
+
+            await client.query("BEGIN");
+
+
+            const created = [];
+
+
+            // ====================================================
+            // INSERT EACH TRANSACTION
+            // ====================================================
+
+            for (let i = 0; i < transactions.length; i++) {
+
+                const data = transactions[i];
+
+
+                // ------------------------------------------------
+                // REQUIRED FIELDS
+                // ------------------------------------------------
+
+                if (
+                    !data.transaction_date ||
+                    !data.description ||
+                    !data.normalized_description ||
+                    data.billed_amount === undefined ||
+                    data.billed_amount === null ||
+                    !data.row_hash
+                ) {
+
+                    throw new Error(
+                        `Invalid transaction at index ${i}`
+                    );
+                }
+
+
+                // ------------------------------------------------
+                // STATUS
+                // ------------------------------------------------
+
+                const status =
+                    data.status ??
+                    "unmatched";
+
+                if (!VALID_STATUSES.includes(status)) {
+
+                    throw new Error(
+                        `Invalid status at transaction index ${i}`
+                    );
+                }
+
+
+                // ------------------------------------------------
+                // COVERAGE STATE
+                // ------------------------------------------------
+
+                const coverageState =
+                    data.coverage_state ??
+                    "unmatched";
+
+                if (
+                    !VALID_COVERAGE_STATES.includes(
+                        coverageState
+                    )
+                ) {
+
+                    throw new Error(
+                        `Invalid coverage_state at transaction index ${i}`
+                    );
+                }
+
+
+                // ------------------------------------------------
+                // SPAM
+                // ------------------------------------------------
+
+                const spam =
+                    data.spam ??
+                    false;
+
+                if (typeof spam !== "boolean") {
+
+                    throw new Error(
+                        `spam must be true or false at transaction index ${i}`
+                    );
+                }
+
+
+                // ------------------------------------------------
+                // INSERT
+                // ------------------------------------------------
+
+                const result = await client.query(
+                    `INSERT INTO transactions (
+                    statement_id,
+                    statement_period,
+                    line_no,
+                    transaction_date,
+                    posting_date,
+                    description,
+                    normalized_description,
+                    counterparty_ref,
+                    original_currency,
+                    billed_amount,
+                    billed_currency,
+                    status,
+                    coverage_state,
+                    row_hash,
+                    spam
+                )
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7,
+                    $8,
+                    $9,
+                    $10,
+                    $11,
+                    $12,
+                    $13,
+                    $14,
+                    $15
+                )
+                RETURNING *`,
+                    [
+
+                        // statement_id
+                        statementId,
+
+                        // statement_period
+                        statementPeriod,
+
+                        // line_no
+                        data.line_no ?? i + 1,
+
+                        // transaction_date
+                        data.transaction_date,
+
+                        // posting_date
+                        data.posting_date ?? null,
+
+                        // description
+                        data.description,
+
+                        // normalized_description
+                        data.normalized_description,
+
+                        // counterparty_ref
+                        data.counterparty_ref ?? null,
+
+                        // original_currency
+                        data.original_currency ?? null,
+
+                        // billed_amount
+                        data.billed_amount,
+
+                        // billed_currency
+                        data.billed_currency ?? "SEK",
+
+                        // status
+                        status,
+
+                        // coverage_state
+                        coverageState,
+
+                        // row_hash
+                        data.row_hash,
+
+                        // spam
+                        spam
+                    ]
+                );
+
+
+                created.push(
+                    result.rows[0]
+                );
+            }
+
+
+            // ====================================================
+            // COMMIT
+            // ====================================================
+
+            await client.query("COMMIT");
+
+
+            // ====================================================
+            // RESPONSE
+            // ====================================================
+
+            return res.status(201).json({
+                success: true,
+                transactions: created
+            });
+
+
+        } catch (err) {
+
+            // ====================================================
+            // ROLLBACK
+            // ====================================================
+
+            await client.query("ROLLBACK");
+
+
+            console.error(
+                "createBulk transactions error:",
+                err
+            );
+
+
+            // ====================================================
+            // DUPLICATE ROW HASH
+            // ====================================================
+
+            if (err.code === "23505") {
+
+                return res.status(409).json({
+                    success: false,
+                    error:
+                        "A transaction with this row_hash already exists"
+                });
+            }
+
+
+            // ====================================================
+            // FOREIGN KEY
+            // ====================================================
+
+            if (err.code === "23503") {
+
+                return res.status(400).json({
+                    success: false,
+                    error:
+                        "Referenced statement does not exist"
+                });
+            }
+
+
+            // ====================================================
+            // OTHER ERROR
+            // ====================================================
+
+            return res.status(500).json({
+                success: false,
+                error:
+                    err.message ||
+                    "Failed to create transactions"
+            });
+
+
+        } finally {
+
+            client.release();
+        }
+    },
+
+
+    // ============================================================
+    // UPDATE TRANSACTION
     // ============================================================
 
     async updateTransaction(req, res) {
@@ -414,7 +756,6 @@ const transactionController = {
             counterparty_ref,
             original_amount,
             original_currency,
-            statement_fx_rate,
             billed_amount,
             billed_currency,
             status,
@@ -469,7 +810,9 @@ const transactionController = {
 
             if (
                 coverage_state !== undefined &&
-                !VALID_COVERAGE_STATES.includes(coverage_state)
+                !VALID_COVERAGE_STATES.includes(
+                    coverage_state
+                )
             ) {
 
                 return res.status(400).json({
@@ -546,31 +889,28 @@ const transactionController = {
                     original_currency =
                         COALESCE($9, original_currency),
 
-                    statement_fx_rate =
-                        COALESCE($10, statement_fx_rate),
-
                     billed_amount =
-                        COALESCE($11, billed_amount),
+                        COALESCE($10, billed_amount),
 
                     billed_currency =
-                        COALESCE($12, billed_currency),
+                        COALESCE($11, billed_currency),
 
                     status =
-                        COALESCE($13, status),
+                        COALESCE($12, status),
 
                     coverage_state =
-                        COALESCE($14, coverage_state),
+                        COALESCE($13, coverage_state),
 
                     ignore_reason =
-                        COALESCE($15, ignore_reason),
+                        COALESCE($14, ignore_reason),
 
                     row_hash =
-                        COALESCE($16, row_hash),
+                        COALESCE($15, row_hash),
 
                     spam =
-                        COALESCE($17, spam)
+                        COALESCE($16, spam)
 
-                 WHERE id = $18
+                 WHERE id = $17
 
                  RETURNING *`,
                 [
@@ -583,7 +923,6 @@ const transactionController = {
                     counterparty_ref ?? null,
                     original_amount ?? null,
                     original_currency ?? null,
-                    statement_fx_rate ?? null,
                     billed_amount ?? null,
                     billed_currency ?? null,
                     status ?? null,
