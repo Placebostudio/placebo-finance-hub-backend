@@ -290,6 +290,7 @@ const reportController = {
         } = req.query;
 
         try {
+
             const result = await db.query(
                 `
             SELECT
@@ -361,9 +362,7 @@ const reportController = {
                 t.description,
                 t.normalized_description,
                 t.counterparty_ref,
-                t.original_amount,
                 t.original_currency,
-                t.statement_fx_rate,
                 t.billed_amount,
                 t.billed_currency,
                 t.status AS transaction_status,
@@ -372,18 +371,12 @@ const reportController = {
                 s.id AS linked_statement_id,
                 s.statement_type,
                 s.period AS statement_period_value,
-                s.account_label,
-                s.account_ref,
-                s.period_from,
-                s.period_to,
-                s.opening_balance,
-                s.closing_balance,
-                s.total_amount,
                 s.source AS statement_source,
+                s.column_mapping_id,
                 s.file_name AS statement_file_name,
-                s.storage_path AS statement_storage_path,
                 s.transaction_count AS statement_transaction_count,
-                s.is_locked AS statement_is_locked
+                s.uploaded_by AS statement_uploaded_by,
+                s.created_at AS statement_created_at    
 
             FROM expenses e
 
@@ -402,9 +395,11 @@ const reportController = {
 
             LEFT JOIN transactions t
                 ON t.id = m.transaction_id
+                AND t.spam = false
 
             LEFT JOIN statements s
                 ON s.id = t.statement_id
+                AND s.spam = false
 
             WHERE
                 e.deleted_at IS NULL
@@ -412,7 +407,7 @@ const reportController = {
 
                 AND (
                     $1::text IS NULL
-                     OR TO_CHAR(e.document_date, 'YYYY-MM') = $1::text
+                    OR TO_CHAR(e.document_date, 'YYYY-MM') = $1::text
                 )
 
                 AND (
@@ -424,16 +419,16 @@ const reportController = {
                     $3::text IS NULL
                     OR (
                         $3::text = 'attached'
-                    AND d.id IS NOT NULL
+                        AND d.id IS NOT NULL
                     )
                     OR (
-                    $3::text = 'missing'
-                    AND d.id IS NULL
+                        $3::text = 'missing'
+                        AND d.id IS NULL
                     )
                 )
 
                 AND (
-                     $4::text IS NULL
+                    $4::text IS NULL
                     OR e.coverage_state::text = $4::text
                 )
 
@@ -460,7 +455,11 @@ const reportController = {
             return res.json(result.rows);
 
         } catch (err) {
-            console.error(err);
+
+            console.error(
+                "Failed to load expense ledger:",
+                err
+            );
 
             return res.status(500).json({
                 success: false,
