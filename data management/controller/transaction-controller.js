@@ -1,6 +1,5 @@
 const db = require("../../db_connection");
 
-
 const VALID_STATUSES = [
     "unmatched",
     "matched",
@@ -14,7 +13,6 @@ const VALID_COVERAGE_STATES = [
     "partially_matched",
     "fully_matched"
 ];
-
 
 const transactionController = {
 
@@ -218,11 +216,52 @@ const transactionController = {
             coverage_state = "unmatched",
             ignore_reason,
             row_hash,
-            spam = false
+            spam = false,
+            user_id
         } = req.body;
 
 
         try {
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult = await db.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
 
             // ====================================================
             // REQUIRED FIELDS
@@ -320,6 +359,7 @@ const transactionController = {
                  WHERE id = $1`,
                 [statement_id]
             );
+
 
             if (statement.rows.length === 0) {
 
@@ -424,8 +464,6 @@ const transactionController = {
 
     // ============================================================
     // CREATE MANY TRANSACTIONS
-    //
-    // Creates all transactions inside one database transaction.
     // ============================================================
 
     async createBulk(req, res) {
@@ -437,8 +475,49 @@ const transactionController = {
             const {
                 statementId,
                 statementPeriod,
-                transactions
+                transactions,
+                user_id
             } = req.body;
+
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult = await client.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
 
 
             // ====================================================
@@ -453,6 +532,7 @@ const transactionController = {
                 });
             }
 
+
             if (!statementPeriod) {
 
                 return res.status(400).json({
@@ -460,6 +540,7 @@ const transactionController = {
                     error: "statementPeriod is required"
                 });
             }
+
 
             if (
                 !Array.isArray(transactions) ||
@@ -480,10 +561,11 @@ const transactionController = {
 
             const statement = await client.query(
                 `SELECT id, period
-             FROM statements
-             WHERE id = $1`,
+                 FROM statements
+                 WHERE id = $1`,
                 [statementId]
             );
+
 
             if (statement.rows.length === 0) {
 
@@ -554,6 +636,7 @@ const transactionController = {
                     data.status ??
                     "unmatched";
 
+
                 if (!VALID_STATUSES.includes(status)) {
 
                     throw new Error(
@@ -569,6 +652,7 @@ const transactionController = {
                 const coverageState =
                     data.coverage_state ??
                     "unmatched";
+
 
                 if (
                     !VALID_COVERAGE_STATES.includes(
@@ -590,6 +674,7 @@ const transactionController = {
                     data.spam ??
                     false;
 
+
                 if (typeof spam !== "boolean") {
 
                     throw new Error(
@@ -604,85 +689,55 @@ const transactionController = {
 
                 const result = await client.query(
                     `INSERT INTO transactions (
-                    statement_id,
-                    statement_period,
-                    line_no,
-                    transaction_date,
-                    posting_date,
-                    description,
-                    normalized_description,
-                    counterparty_ref,
-                    original_currency,
-                    billed_amount,
-                    billed_currency,
-                    status,
-                    coverage_state,
-                    row_hash,
-                    spam
-                )
-                VALUES (
-                    $1,
-                    $2,
-                    $3,
-                    $4,
-                    $5,
-                    $6,
-                    $7,
-                    $8,
-                    $9,
-                    $10,
-                    $11,
-                    $12,
-                    $13,
-                    $14,
-                    $15
-                )
-                RETURNING *`,
-                    [
-
-                        // statement_id
-                        statementId,
-
-                        // statement_period
-                        statementPeriod,
-
-                        // line_no
-                        data.line_no ?? i + 1,
-
-                        // transaction_date
-                        data.transaction_date,
-
-                        // posting_date
-                        data.posting_date ?? null,
-
-                        // description
-                        data.description,
-
-                        // normalized_description
-                        data.normalized_description,
-
-                        // counterparty_ref
-                        data.counterparty_ref ?? null,
-
-                        // original_currency
-                        data.original_currency ?? null,
-
-                        // billed_amount
-                        data.billed_amount,
-
-                        // billed_currency
-                        data.billed_currency ?? "SEK",
-
-                        // status
+                        statement_id,
+                        statement_period,
+                        line_no,
+                        transaction_date,
+                        posting_date,
+                        description,
+                        normalized_description,
+                        counterparty_ref,
+                        original_currency,
+                        billed_amount,
+                        billed_currency,
                         status,
-
-                        // coverage_state
+                        coverage_state,
+                        row_hash,
+                        spam
+                    )
+                    VALUES (
+                        $1,
+                        $2,
+                        $3,
+                        $4,
+                        $5,
+                        $6,
+                        $7,
+                        $8,
+                        $9,
+                        $10,
+                        $11,
+                        $12,
+                        $13,
+                        $14,
+                        $15
+                    )
+                    RETURNING *`,
+                    [
+                        statementId,
+                        statementPeriod,
+                        data.line_no ?? i + 1,
+                        data.transaction_date,
+                        data.posting_date ?? null,
+                        data.description,
+                        data.normalized_description,
+                        data.counterparty_ref ?? null,
+                        data.original_currency ?? null,
+                        data.billed_amount,
+                        data.billed_currency ?? "SEK",
+                        status,
                         coverageState,
-
-                        // row_hash
                         data.row_hash,
-
-                        // spam
                         spam
                     ]
                 );
@@ -713,10 +768,6 @@ const transactionController = {
 
         } catch (err) {
 
-            // ====================================================
-            // ROLLBACK
-            // ====================================================
-
             await client.query("ROLLBACK");
 
 
@@ -725,10 +776,6 @@ const transactionController = {
                 err
             );
 
-
-            // ====================================================
-            // DUPLICATE ROW HASH
-            // ====================================================
 
             if (err.code === "23505") {
 
@@ -740,10 +787,6 @@ const transactionController = {
             }
 
 
-            // ====================================================
-            // FOREIGN KEY
-            // ====================================================
-
             if (err.code === "23503") {
 
                 return res.status(400).json({
@@ -753,10 +796,6 @@ const transactionController = {
                 });
             }
 
-
-            // ====================================================
-            // OTHER ERROR
-            // ====================================================
 
             return res.status(500).json({
                 success: false,
@@ -797,11 +836,52 @@ const transactionController = {
             coverage_state,
             ignore_reason,
             row_hash,
-            spam
+            spam,
+            user_id
         } = req.body;
 
 
         try {
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult = await db.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
 
             // ====================================================
             // CHECK EXISTS
@@ -813,6 +893,7 @@ const transactionController = {
                  WHERE id = $1`,
                 [transactionid]
             );
+
 
             if (existing.rows.length === 0) {
 
@@ -1004,7 +1085,56 @@ const transactionController = {
 
         const { transactionid } = req.params;
 
+        const {
+            user_id
+        } = req.body;
+
+
         try {
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult = await db.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
+
+            // ====================================================
+            // DELETE
+            // ====================================================
 
             const result = await db.query(
                 `DELETE FROM transactions

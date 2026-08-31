@@ -34,76 +34,208 @@ const VALID_STATUSES = [
 ];
 
 
+// ============================================================
+// PERMISSION HELPER
+// ============================================================
+//
+// The frontend sends:
+//
+// {
+//     user_id: "uuid"
+// }
+//
+// The backend checks the users table directly.
+//
+// Permission levels:
+//
+// viewer  -> 0
+// manager -> 1
+// owner   -> 2
+//
+// Change the role directly in the database and the permissions
+// immediately change.
+//
+
+async function authorizeUser(userId, requiredRole) {
+
+    if (!userId) {
+
+        return {
+            allowed: false,
+            status: 401,
+            error: "user_id is required"
+        };
+    }
+
+
+    const result = await db.query(
+        `
+        SELECT
+            id,
+            role
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [userId]
+    );
+
+
+    if (result.rows.length === 0) {
+
+        return {
+            allowed: false,
+            status: 401,
+            error: "User not found"
+        };
+    }
+
+
+    const user = result.rows[0];
+
+
+    const roleLevels = {
+        viewer: 0,
+        manager: 1,
+        owner: 2
+    };
+
+
+    const userLevel =
+        roleLevels[user.role];
+
+
+    const requiredLevel =
+        roleLevels[requiredRole];
+
+
+    if (
+        userLevel === undefined ||
+        requiredLevel === undefined
+    ) {
+
+        return {
+            allowed: false,
+            status: 403,
+            error: "Invalid user role"
+        };
+    }
+
+
+    if (userLevel < requiredLevel) {
+
+        return {
+            allowed: false,
+            status: 403,
+            error:
+                `Permission denied. ${requiredRole} permission is required`
+        };
+    }
+
+
+    return {
+        allowed: true,
+        user
+    };
+}
+
+
 const expenseController = {
 
     // ============================================================
     // GET ALL EXPENSES
+    // VIEWER+
     // ============================================================
 
     async getExpenses(req, res) {
 
         const {
+            user_id,
             vendor_id,
             period,
             spam
         } = req.query;
 
+
         try {
+
+            const authorization =
+                await authorizeUser(
+                    user_id,
+                    "viewer"
+                );
+
+
+            if (!authorization.allowed) {
+
+                return res.status(
+                    authorization.status
+                ).json({
+                    success: false,
+                    error: authorization.error
+                });
+            }
+
 
             const result = await db.query(
                 `SELECT
-                id,
-                expense_no,
-                document_id,
-                project_id,
-                vendor_id,
-                vendor_name,
-                document_type,
-                document_number,
-                document_date,
-                due_date,
-                currency,
-                country_code,
-                net_amount,
-                vat_amount,
-                vat_rate,
-                gross_amount,
-                paid_amount,
-                fx_rate,
-                fx_date,
-                fx_source,
-                gross_amount_sek,
-                paid_amount_sek,
-                vat_amount_sek,
-                is_reverse_charge,
-                is_vat_deductible,
-                category_id,
-                payment_method,
-                coverage_state,
-                notes,
-                status,
-                created_by,
-                approved_by,
-                approved_at,
-                created_at,
-                updated_at,
-                deleted_at,
-                spam
-             FROM expenses
-             WHERE deleted_at IS NULL
-               AND (
-                    $1::uuid IS NULL
-                    OR vendor_id = $1
-               )
-               AND (
-                    $2::text IS NULL
-                    OR TO_CHAR(document_date, 'YYYY-MM') = $2
-               )
-               AND (
-                    $3::boolean IS NULL
-                    OR COALESCE(spam, false) = $3
-               )
-             ORDER BY document_date DESC, created_at DESC`,
+                    id,
+                    expense_no,
+                    document_id,
+                    project_id,
+                    vendor_id,
+                    vendor_name,
+                    document_type,
+                    document_number,
+                    document_date,
+                    due_date,
+                    currency,
+                    country_code,
+                    net_amount,
+                    vat_amount,
+                    vat_rate,
+                    gross_amount,
+                    paid_amount,
+                    fx_rate,
+                    fx_date,
+                    fx_source,
+                    gross_amount_sek,
+                    paid_amount_sek,
+                    vat_amount_sek,
+                    is_reverse_charge,
+                    is_vat_deductible,
+                    category_id,
+                    payment_method,
+                    coverage_state,
+                    notes,
+                    status,
+                    created_by,
+                    approved_by,
+                    approved_at,
+                    created_at,
+                    updated_at,
+                    deleted_at,
+                    spam
+                 FROM expenses
+                 WHERE deleted_at IS NULL
+                   AND (
+                        $1::uuid IS NULL
+                        OR vendor_id = $1
+                   )
+                   AND (
+                        $2::text IS NULL
+                        OR TO_CHAR(
+                            document_date,
+                            'YYYY-MM'
+                        ) = $2
+                   )
+                   AND (
+                        $3::boolean IS NULL
+                        OR COALESCE(spam, false) = $3
+                   )
+                 ORDER BY
+                    document_date DESC,
+                    created_at DESC`,
                 [
                     vendor_id || null,
                     period || null,
@@ -112,6 +244,7 @@ const expenseController = {
                         : spam === "true"
                 ]
             );
+
 
             return res.json(result.rows);
 
@@ -129,13 +262,39 @@ const expenseController = {
 
     // ============================================================
     // GET ONE EXPENSE
+    // VIEWER+
     // ============================================================
 
     async getExpense(req, res) {
 
-        const { expenseid } = req.params;
+        const {
+            expenseid
+        } = req.params;
+
+        const {
+            user_id
+        } = req.query;
+
 
         try {
+
+            const authorization =
+                await authorizeUser(
+                    user_id,
+                    "viewer"
+                );
+
+
+            if (!authorization.allowed) {
+
+                return res.status(
+                    authorization.status
+                ).json({
+                    success: false,
+                    error: authorization.error
+                });
+            }
+
 
             const result = await db.query(
                 `SELECT
@@ -182,6 +341,7 @@ const expenseController = {
                 [expenseid]
             );
 
+
             if (result.rows.length === 0) {
 
                 return res.status(404).json({
@@ -189,6 +349,7 @@ const expenseController = {
                     error: "Expense not found"
                 });
             }
+
 
             return res.json(result.rows[0]);
 
@@ -203,31 +364,71 @@ const expenseController = {
         }
     },
 
+
+    // ============================================================
+    // GET EXPENSE BY DOCUMENT ID
+    // VIEWER+
+    // ============================================================
+
     async getExpenseByDocumentId(req, res) {
+
+        const {
+            documentid
+        } = req.params;
+
+        const {
+            user_id
+        } = req.query;
+
+
         try {
 
-            const result = await db.query(`
-            SELECT *
-            FROM expenses
-            WHERE document_id = $1
-            LIMIT 1
-        `, [
-                req.params.documentid
-            ]);
+            const authorization =
+                await authorizeUser(
+                    user_id,
+                    "viewer"
+                );
+
+
+            if (!authorization.allowed) {
+
+                return res.status(
+                    authorization.status
+                ).json({
+                    success: false,
+                    error: authorization.error
+                });
+            }
+
+
+            const result = await db.query(
+                `
+                SELECT *
+                FROM expenses
+                WHERE document_id = $1
+                LIMIT 1
+                `,
+                [documentid]
+            );
+
 
             if (result.rows.length === 0) {
+
                 return res.status(404).json({
+                    success: false,
                     error: "Expense not found"
                 });
             }
 
-            res.json(result.rows[0]);
+
+            return res.json(result.rows[0]);
 
         } catch (err) {
 
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
+                success: false,
                 error: err.message
             });
         }
@@ -236,11 +437,14 @@ const expenseController = {
 
     // ============================================================
     // ADD EXPENSE
+    // MANAGER+
     // ============================================================
 
     async addExpense(req, res) {
 
         const {
+            user_id,
+
             document_id,
             project_id,
             vendor_id,
@@ -269,12 +473,33 @@ const expenseController = {
             coverage_state = "unmatched",
             notes,
             status = "draft",
-            created_by,
             spam = false
         } = req.body;
 
 
         try {
+
+            // ====================================================
+            // PERMISSION
+            // ====================================================
+
+            const authorization =
+                await authorizeUser(
+                    user_id,
+                    "manager"
+                );
+
+
+            if (!authorization.allowed) {
+
+                return res.status(
+                    authorization.status
+                ).json({
+                    success: false,
+                    error: authorization.error
+                });
+            }
+
 
             // ====================================================
             // REQUIRED FIELDS
@@ -302,13 +527,18 @@ const expenseController = {
             // VALIDATE ENUMS
             // ====================================================
 
-            if (!VALID_DOCUMENT_TYPES.includes(document_type)) {
+            if (
+                !VALID_DOCUMENT_TYPES.includes(
+                    document_type
+                )
+            ) {
 
                 return res.status(400).json({
                     success: false,
                     error: "Invalid document_type"
                 });
             }
+
 
             if (
                 !VALID_FX_SOURCES.includes(fx_source) &&
@@ -322,7 +552,12 @@ const expenseController = {
                 });
             }
 
-            if (!VALID_PAYMENT_METHODS.includes(payment_method)) {
+
+            if (
+                !VALID_PAYMENT_METHODS.includes(
+                    payment_method
+                )
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -330,7 +565,12 @@ const expenseController = {
                 });
             }
 
-            if (!VALID_COVERAGE_STATES.includes(coverage_state)) {
+
+            if (
+                !VALID_COVERAGE_STATES.includes(
+                    coverage_state
+                )
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -338,7 +578,10 @@ const expenseController = {
                 });
             }
 
-            if (!VALID_STATUSES.includes(status)) {
+
+            if (
+                !VALID_STATUSES.includes(status)
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -348,7 +591,7 @@ const expenseController = {
 
 
             // ====================================================
-            // SPAM VALIDATION
+            // SPAM
             // ====================================================
 
             if (typeof spam !== "boolean") {
@@ -361,14 +604,15 @@ const expenseController = {
 
 
             // ====================================================
-            // AMOUNT VALIDATION
+            // AMOUNT
             // ====================================================
 
             if (Number(gross_amount) <= 0) {
 
                 return res.status(400).json({
                     success: false,
-                    error: "gross_amount must be greater than 0"
+                    error:
+                        "gross_amount must be greater than 0"
                 });
             }
 
@@ -483,7 +727,7 @@ const expenseController = {
                     coverage_state,
                     notes || null,
                     status,
-                    created_by || null,
+                    user_id,
                     spam
                 ]
             );
@@ -508,13 +752,19 @@ const expenseController = {
 
     // ============================================================
     // UPDATE EXPENSE
+    // MANAGER+
     // ============================================================
 
     async updateExpense(req, res) {
 
-        const { expenseid } = req.params;
+        const {
+            expenseid
+        } = req.params;
+
 
         const {
+            user_id,
+
             project_id,
             vendor_id,
             vendor_name,
@@ -549,12 +799,36 @@ const expenseController = {
         try {
 
             // ====================================================
-            // VALIDATE ENUMS
+            // PERMISSION
+            // ====================================================
+
+            const authorization =
+                await authorizeUser(
+                    user_id,
+                    "manager"
+                );
+
+
+            if (!authorization.allowed) {
+
+                return res.status(
+                    authorization.status
+                ).json({
+                    success: false,
+                    error: authorization.error
+                });
+            }
+
+
+            // ====================================================
+            // VALIDATION
             // ====================================================
 
             if (
                 document_type !== undefined &&
-                !VALID_DOCUMENT_TYPES.includes(document_type)
+                !VALID_DOCUMENT_TYPES.includes(
+                    document_type
+                )
             ) {
 
                 return res.status(400).json({
@@ -567,7 +841,9 @@ const expenseController = {
             if (
                 fx_source !== undefined &&
                 fx_source !== null &&
-                !VALID_FX_SOURCES.includes(fx_source)
+                !VALID_FX_SOURCES.includes(
+                    fx_source
+                )
             ) {
 
                 return res.status(400).json({
@@ -579,7 +855,9 @@ const expenseController = {
 
             if (
                 payment_method !== undefined &&
-                !VALID_PAYMENT_METHODS.includes(payment_method)
+                !VALID_PAYMENT_METHODS.includes(
+                    payment_method
+                )
             ) {
 
                 return res.status(400).json({
@@ -591,7 +869,9 @@ const expenseController = {
 
             if (
                 coverage_state !== undefined &&
-                !VALID_COVERAGE_STATES.includes(coverage_state)
+                !VALID_COVERAGE_STATES.includes(
+                    coverage_state
+                )
             ) {
 
                 return res.status(400).json({
@@ -613,10 +893,6 @@ const expenseController = {
             }
 
 
-            // ====================================================
-            // SPAM VALIDATION
-            // ====================================================
-
             if (
                 spam !== undefined &&
                 typeof spam !== "boolean"
@@ -629,10 +905,6 @@ const expenseController = {
             }
 
 
-            // ====================================================
-            // AMOUNT VALIDATION
-            // ====================================================
-
             if (
                 gross_amount !== undefined &&
                 Number(gross_amount) <= 0
@@ -640,7 +912,8 @@ const expenseController = {
 
                 return res.status(400).json({
                     success: false,
-                    error: "gross_amount must be greater than 0"
+                    error:
+                        "gross_amount must be greater than 0"
                 });
             }
 
@@ -746,20 +1019,36 @@ const expenseController = {
 
     // ============================================================
     // APPROVE EXPENSE
+    // MANAGER+
     // ============================================================
 
     async approveExpense(req, res) {
 
-        const { expenseid } = req.params;
-        const { approved_by } = req.body;
+        const {
+            expenseid
+        } = req.params;
+
+        const {
+            user_id
+        } = req.body;
+
 
         try {
 
-            if (!approved_by) {
+            const authorization =
+                await authorizeUser(
+                    user_id,
+                    "manager"
+                );
 
-                return res.status(400).json({
+
+            if (!authorization.allowed) {
+
+                return res.status(
+                    authorization.status
+                ).json({
                     success: false,
-                    error: "approved_by is required"
+                    error: authorization.error
                 });
             }
 
@@ -775,7 +1064,7 @@ const expenseController = {
                    AND deleted_at IS NULL
                  RETURNING *`,
                 [
-                    approved_by,
+                    user_id,
                     expenseid
                 ]
             );
@@ -809,13 +1098,39 @@ const expenseController = {
 
     // ============================================================
     // SOFT DELETE
+    // MANAGER+
     // ============================================================
 
     async deleteExpense(req, res) {
 
-        const { expenseid } = req.params;
+        const {
+            expenseid
+        } = req.params;
+
+        const {
+            user_id
+        } = req.body;
+
 
         try {
+
+            const authorization =
+                await authorizeUser(
+                    user_id,
+                    "manager"
+                );
+
+
+            if (!authorization.allowed) {
+
+                return res.status(
+                    authorization.status
+                ).json({
+                    success: false,
+                    error: authorization.error
+                });
+            }
+
 
             const result = await db.query(
                 `UPDATE expenses
@@ -858,13 +1173,39 @@ const expenseController = {
 
     // ============================================================
     // RESTORE EXPENSE
+    // MANAGER+
     // ============================================================
 
     async restoreExpense(req, res) {
 
-        const { expenseid } = req.params;
+        const {
+            expenseid
+        } = req.params;
+
+        const {
+            user_id
+        } = req.body;
+
 
         try {
+
+            const authorization =
+                await authorizeUser(
+                    user_id,
+                    "manager"
+                );
+
+
+            if (!authorization.allowed) {
+
+                return res.status(
+                    authorization.status
+                ).json({
+                    success: false,
+                    error: authorization.error
+                });
+            }
+
 
             const result = await db.query(
                 `UPDATE expenses

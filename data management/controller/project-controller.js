@@ -20,7 +20,7 @@ const projectController = {
 
             const params = [];
 
-            if (spam !== undefined) {
+            if (spam === "true" || spam === "false") {
 
                 params.push(
                     spam === "true"
@@ -40,13 +40,14 @@ const projectController = {
                 params
             );
 
-            res.json(result.rows);
+            return res.json(result.rows);
 
         } catch (err) {
 
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
+                success: false,
                 error: err.message
             });
         }
@@ -58,24 +59,36 @@ const projectController = {
     // ============================================================
 
     async getProject(req, res) {
+
         try {
-            const result = await db.query(`
+
+            const result = await db.query(
+                `
                 SELECT *
                 FROM projects
                 WHERE id = $1
-            `, [req.params.projectid]);
+                `,
+                [req.params.projectid]
+            );
 
             if (result.rows.length === 0) {
+
                 return res.status(404).json({
+                    success: false,
                     error: "Project not found"
                 });
             }
 
-            res.json(result.rows[0]);
+            return res.json(result.rows[0]);
 
         } catch (err) {
+
             console.error(err);
-            res.status(500).json({ error: err.message });
+
+            return res.status(500).json({
+                success: false,
+                error: err.message
+            });
         }
     },
 
@@ -85,16 +98,69 @@ const projectController = {
     // ============================================================
 
     async addProject(req, res) {
+
+        const {
+            name,
+            code,
+            status = "active",
+            start_date,
+            end_date,
+            notes,
+            spam = false,
+            user_id
+        } = req.body;
+
+
         try {
-            const {
-                name,
-                code,
-                status = "active",
-                start_date,
-                end_date,
-                notes,
-                spam = false
-            } = req.body;
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult = await db.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
+
+            // ====================================================
+            // VALIDATE REQUIRED FIELDS
+            // ====================================================
+
+            if (!name || !code) {
+
+                return res.status(400).json({
+                    success: false,
+                    error: "name and code are required"
+                });
+            }
 
 
             // ====================================================
@@ -102,13 +168,20 @@ const projectController = {
             // ====================================================
 
             if (typeof spam !== "boolean") {
+
                 return res.status(400).json({
+                    success: false,
                     error: "spam must be true or false"
                 });
             }
 
 
-            const result = await db.query(`
+            // ====================================================
+            // INSERT
+            // ====================================================
+
+            const result = await db.query(
+                `
                 INSERT INTO projects (
                     name,
                     code,
@@ -118,47 +191,130 @@ const projectController = {
                     notes,
                     spam
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7
+                )
                 RETURNING *
-            `, [
-                name,
-                code,
-                status,
-                start_date || null,
-                end_date || null,
-                notes || null,
-                spam
-            ]);
+                `,
+                [
+                    name,
+                    code,
+                    status,
+                    start_date || null,
+                    end_date || null,
+                    notes || null,
+                    spam
+                ]
+            );
 
-            res.status(201).json(result.rows[0]);
+            return res.status(201).json({
+                success: true,
+                project: result.rows[0]
+            });
 
         } catch (err) {
+
             console.error(err);
-            res.status(500).json({ error: err.message });
+
+            if (err.code === "23505") {
+
+                return res.status(409).json({
+                    success: false,
+                    error: "A project with this name or code already exists"
+                });
+            }
+
+            return res.status(500).json({
+                success: false,
+                error: err.message
+            });
         }
     },
 
 
     // ============================================================
     // UPDATE PROJECT
-    //
-    // Can update:
-    // - all normal fields
-    // - only spam
-    // - normal fields + spam
     // ============================================================
 
     async updateProject(req, res) {
+
+        const {
+            name,
+            code,
+            status,
+            start_date,
+            end_date,
+            notes,
+            spam,
+            user_id
+        } = req.body;
+
+
         try {
-            const {
-                name,
-                code,
-                status,
-                start_date,
-                end_date,
-                notes,
-                spam
-            } = req.body;
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult = await db.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
+
+            // ====================================================
+            // CHECK PROJECT EXISTS
+            // ====================================================
+
+            const existing = await db.query(
+                `
+                SELECT id
+                FROM projects
+                WHERE id = $1
+                `,
+                [req.params.projectid]
+            );
+
+            if (existing.rows.length === 0) {
+
+                return res.status(404).json({
+                    success: false,
+                    error: "Project not found"
+                });
+            }
 
 
             // ====================================================
@@ -169,46 +325,82 @@ const projectController = {
                 spam !== undefined &&
                 typeof spam !== "boolean"
             ) {
+
                 return res.status(400).json({
+                    success: false,
                     error: "spam must be true or false"
                 });
             }
 
 
-            const result = await db.query(`
+            // ====================================================
+            // UPDATE
+            // ====================================================
+
+            const result = await db.query(
+                `
                 UPDATE projects
                 SET
-                    name = COALESCE($1, name),
-                    code = COALESCE($2, code),
-                    status = COALESCE($3, status),
-                    start_date = COALESCE($4, start_date),
-                    end_date = COALESCE($5, end_date),
-                    notes = COALESCE($6, notes),
-                    spam = COALESCE($7, spam)
-                WHERE id = $8
-                RETURNING *
-            `, [
-                name ?? null,
-                code ?? null,
-                status ?? null,
-                start_date ?? null,
-                end_date ?? null,
-                notes ?? null,
-                spam !== undefined ? spam : null,
-                req.params.projectid
-            ]);
+                    name =
+                        COALESCE($1, name),
 
-            if (result.rows.length === 0) {
-                return res.status(404).json({
-                    error: "Project not found"
+                    code =
+                        COALESCE($2, code),
+
+                    status =
+                        COALESCE($3, status),
+
+                    start_date =
+                        COALESCE($4, start_date),
+
+                    end_date =
+                        COALESCE($5, end_date),
+
+                    notes =
+                        COALESCE($6, notes),
+
+                    spam =
+                        COALESCE($7, spam)
+
+                WHERE id = $8
+
+                RETURNING *
+                `,
+                [
+                    name ?? null,
+                    code ?? null,
+                    status ?? null,
+                    start_date ?? null,
+                    end_date ?? null,
+                    notes ?? null,
+                    spam !== undefined
+                        ? spam
+                        : null,
+                    req.params.projectid
+                ]
+            );
+
+            return res.json({
+                success: true,
+                project: result.rows[0]
+            });
+
+        } catch (err) {
+
+            console.error(err);
+
+            if (err.code === "23505") {
+
+                return res.status(409).json({
+                    success: false,
+                    error: "A project with this name or code already exists"
                 });
             }
 
-            res.json(result.rows[0]);
-
-        } catch (err) {
-            console.error(err);
-            res.status(500).json({ error: err.message });
+            return res.status(500).json({
+                success: false,
+                error: err.message
+            });
         }
     },
 
@@ -218,27 +410,82 @@ const projectController = {
     // ============================================================
 
     async deleteProject(req, res) {
+
+        const { user_id } = req.body;
+
         try {
-            const result = await db.query(`
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult = await db.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
+
+            // ====================================================
+            // DELETE
+            // ====================================================
+
+            const result = await db.query(
+                `
                 DELETE FROM projects
                 WHERE id = $1
                 RETURNING *
-            `, [req.params.projectid]);
+                `,
+                [req.params.projectid]
+            );
 
             if (result.rows.length === 0) {
+
                 return res.status(404).json({
+                    success: false,
                     error: "Project not found"
                 });
             }
 
-            res.json({
+            return res.json({
                 success: true,
                 project: result.rows[0]
             });
 
         } catch (err) {
+
             console.error(err);
-            res.status(500).json({ error: err.message });
+
+            return res.status(500).json({
+                success: false,
+                error: err.message
+            });
         }
     }
 };

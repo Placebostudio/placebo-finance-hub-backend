@@ -23,10 +23,27 @@ const matchController = {
 
         try {
 
+            const permission =
+                await requirePermission(
+                    req,
+                    res,
+                    [
+                        "viewer",
+                        "manager",
+                        "owner"
+                    ]
+                );
+
+            if (!permission) {
+                return;
+            }
+
+
             const {
                 status,
                 spam
             } = req.query;
+
 
             let query = `
             SELECT *
@@ -36,6 +53,7 @@ const matchController = {
 
             const params = [];
 
+
             if (status) {
 
                 params.push(status);
@@ -44,6 +62,7 @@ const matchController = {
                 AND status = $${params.length}
             `;
             }
+
 
             if (spam !== undefined) {
 
@@ -56,16 +75,22 @@ const matchController = {
             `;
             }
 
+
             query += `
             ORDER BY created_at DESC
         `;
 
-            const result = await db.query(
-                query,
-                params
-            );
 
-            return res.json(result.rows);
+            const result =
+                await db.query(
+                    query,
+                    params
+                );
+
+
+            return res.json(
+                result.rows
+            );
 
         } catch (err) {
 
@@ -89,12 +114,32 @@ const matchController = {
 
         try {
 
-            const result = await db.query(
-                `SELECT *
-                 FROM matches
-                 WHERE id = $1`,
-                [matchid]
-            );
+            const permission =
+                await requirePermission(
+                    req,
+                    res,
+                    [
+                        "viewer",
+                        "manager",
+                        "owner"
+                    ]
+                );
+
+            if (!permission) {
+                return;
+            }
+
+
+            const result =
+                await db.query(
+                    `
+                SELECT *
+                FROM matches
+                WHERE id = $1
+                `,
+                    [matchid]
+                );
+
 
             if (result.rows.length === 0) {
 
@@ -104,7 +149,10 @@ const matchController = {
                 });
             }
 
-            return res.json(result.rows[0]);
+
+            return res.json(
+                result.rows[0]
+            );
 
         } catch (err) {
 
@@ -128,15 +176,37 @@ const matchController = {
 
         try {
 
-            const result = await db.query(
-                `SELECT *
-                 FROM matches
-                 WHERE expense_id = $1
-                 ORDER BY created_at DESC`,
-                [expenseid]
-            );
+            const permission =
+                await requirePermission(
+                    req,
+                    res,
+                    [
+                        "viewer",
+                        "manager",
+                        "owner"
+                    ]
+                );
 
-            return res.json(result.rows);
+            if (!permission) {
+                return;
+            }
+
+
+            const result =
+                await db.query(
+                    `
+                SELECT *
+                FROM matches
+                WHERE expense_id = $1
+                ORDER BY created_at DESC
+                `,
+                    [expenseid]
+                );
+
+
+            return res.json(
+                result.rows
+            );
 
         } catch (err) {
 
@@ -160,15 +230,37 @@ const matchController = {
 
         try {
 
-            const result = await db.query(
-                `SELECT *
-                 FROM matches
-                 WHERE transaction_id = $1
-                 ORDER BY created_at DESC`,
-                [transactionid]
-            );
+            const permission =
+                await requirePermission(
+                    req,
+                    res,
+                    [
+                        "viewer",
+                        "manager",
+                        "owner"
+                    ]
+                );
 
-            return res.json(result.rows);
+            if (!permission) {
+                return;
+            }
+
+
+            const result =
+                await db.query(
+                    `
+                SELECT *
+                FROM matches
+                WHERE transaction_id = $1
+                ORDER BY created_at DESC
+                `,
+                    [transactionid]
+                );
+
+
+            return res.json(
+                result.rows
+            );
 
         } catch (err) {
 
@@ -197,11 +289,52 @@ const matchController = {
             reasons = [],
             status = "confirmed",
             confirmed_by,
-            spam = false
+            spam = false,
+            user_id
         } = req.body;
 
 
         try {
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult = await db.query(
+                `
+            SELECT role
+            FROM users
+            WHERE id = $1
+            LIMIT 1
+            `,
+                [user_id]
+            );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
 
             // ====================================================
             // REQUIRED FIELDS
@@ -311,14 +444,15 @@ const matchController = {
 
             const expenseResult = await db.query(
                 `SELECT
-                    id,
-                    paid_amount_sek,
-                    coverage_state
-                 FROM expenses
-                 WHERE id = $1
-                 FOR UPDATE`,
+                id,
+                gross_amount_sek,
+                coverage_state
+             FROM expenses
+             WHERE id = $1
+             FOR UPDATE`,
                 [expense_id]
             );
+
 
             if (expenseResult.rows.length === 0) {
 
@@ -329,7 +463,8 @@ const matchController = {
             }
 
 
-            const expense = expenseResult.rows[0];
+            const expense =
+                expenseResult.rows[0];
 
 
             // ====================================================
@@ -338,14 +473,15 @@ const matchController = {
 
             const transactionResult = await db.query(
                 `SELECT
-                    id,
-                    billed_amount,
-                    coverage_state
-                 FROM transactions
-                 WHERE id = $1
-                 FOR UPDATE`,
+                id,
+                billed_amount,
+                coverage_state
+             FROM transactions
+             WHERE id = $1
+             FOR UPDATE`,
                 [transaction_id]
             );
+
 
             if (transactionResult.rows.length === 0) {
 
@@ -356,7 +492,8 @@ const matchController = {
             }
 
 
-            const transaction = transactionResult.rows[0];
+            const transaction =
+                transactionResult.rows[0];
 
 
             // ====================================================
@@ -365,15 +502,16 @@ const matchController = {
 
             const existingPair = await db.query(
                 `SELECT id, status
-                 FROM matches
-                 WHERE expense_id = $1
-                 AND transaction_id = $2
-                 LIMIT 1`,
+             FROM matches
+             WHERE expense_id = $1
+             AND transaction_id = $2
+             LIMIT 1`,
                 [
                     expense_id,
                     transaction_id
                 ]
             );
+
 
             if (existingPair.rows.length > 0) {
 
@@ -381,7 +519,8 @@ const matchController = {
                     success: false,
                     error:
                         "This expense and transaction pair already exists",
-                    match: existingPair.rows[0]
+                    match:
+                        existingPair.rows[0]
                 });
             }
 
@@ -392,21 +531,31 @@ const matchController = {
 
             const expenseAllocation = await db.query(
                 `SELECT
-                    COALESCE(
-                        SUM(allocated_amount),
-                        0
-                    ) AS allocated
-                 FROM matches
-                 WHERE expense_id = $1
-                 AND status = 'confirmed'`,
+                COALESCE(
+                    SUM(allocated_amount),
+                    0
+                ) AS allocated
+             FROM matches
+             WHERE expense_id = $1
+             AND status = 'confirmed'`,
                 [expense_id]
             );
 
+
             const currentExpenseAllocation =
-                Number(expenseAllocation.rows[0].allocated);
+                Number(
+                    expenseAllocation.rows[0].allocated
+                );
+
+
+            // gross_amount_sek is the actual expense amount.
+            // paid_amount / paid_amount_sek are ignored.
 
             const expenseLimit =
-                Number(expense.gross_amount_sek);
+                Number(
+                    expense.gross_amount_sek
+                );
+
 
             if (
                 currentExpenseAllocation +
@@ -418,7 +567,7 @@ const matchController = {
                 return res.status(400).json({
                     success: false,
                     error:
-                        "Allocation exceeds the expense paid amount",
+                        "Allocation exceeds the expense gross amount",
                     allocated:
                         currentExpenseAllocation,
                     requested:
@@ -435,21 +584,30 @@ const matchController = {
 
             const transactionAllocation = await db.query(
                 `SELECT
-                    COALESCE(
-                        SUM(allocated_amount),
-                        0
-                    ) AS allocated
-                 FROM matches
-                 WHERE transaction_id = $1
-                 AND status = 'confirmed'`,
+                COALESCE(
+                    SUM(allocated_amount),
+                    0
+                ) AS allocated
+             FROM matches
+             WHERE transaction_id = $1
+             AND status = 'confirmed'`,
                 [transaction_id]
             );
 
+
             const currentTransactionAllocation =
-                Number(transactionAllocation.rows[0].allocated);
+                Number(
+                    transactionAllocation.rows[0].allocated
+                );
+
 
             const transactionLimit =
-                Math.abs(Number(transaction.billed_amount));
+                Math.abs(
+                    Number(
+                        transaction.billed_amount
+                    )
+                );
+
 
             if (
                 currentTransactionAllocation +
@@ -488,24 +646,24 @@ const matchController = {
                 confirmed_by,
                 confirmed_at,
                 spam
-                )
-                VALUES (
+            )
+            VALUES (
                 $1,
                 $2,
                 $3,
                 $4,
                 $5,
                 $6,
-                $7::match_status,
+                $7,
                 $8,
-                    CASE
-                    WHEN $7::match_status = 'confirmed'::match_status
+                CASE
+                    WHEN $7 = 'confirmed'
                     THEN NOW()
                     ELSE NULL
                 END,
                 $9
-                )
-                RETURNING *`,
+            )
+            RETURNING *`,
                 [
                     expense_id,
                     transaction_id,
@@ -524,6 +682,7 @@ const matchController = {
                 success: true,
                 match: result.rows[0]
             });
+
 
         } catch (err) {
 
@@ -557,11 +716,52 @@ const matchController = {
             reasons,
             status,
             confirmed_by,
-            spam
+            spam,
+            user_id
         } = req.body;
 
 
         try {
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult = await db.query(
+                `
+            SELECT role
+            FROM users
+            WHERE id = $1
+            LIMIT 1
+            `,
+                [user_id]
+            );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
 
             // ====================================================
             // CHECK MATCH EXISTS
@@ -569,10 +769,11 @@ const matchController = {
 
             const existing = await db.query(
                 `SELECT *
-                 FROM matches
-                 WHERE id = $1`,
+             FROM matches
+             WHERE id = $1`,
                 [matchid]
             );
+
 
             if (existing.rows.length === 0) {
 
@@ -676,44 +877,44 @@ const matchController = {
 
             const result = await db.query(
                 `UPDATE matches
-                 SET
-                    allocated_amount =
-                        COALESCE($1, allocated_amount),
+             SET
+                allocated_amount =
+                    COALESCE($1, allocated_amount),
 
-                    score =
-                        COALESCE($2, score),
+                score =
+                    COALESCE($2, score),
 
-                    match_type =
-                        COALESCE($3, match_type),
+                match_type =
+                    COALESCE($3, match_type),
 
-                    reasons =
-                        COALESCE($4, reasons),
+                reasons =
+                    COALESCE($4, reasons),
 
-                    status =
-                        COALESCE($5, status),
+                status =
+                    COALESCE($5, status),
 
-                    confirmed_by =
-                        COALESCE($6, confirmed_by),
+                confirmed_by =
+                    COALESCE($6, confirmed_by),
 
-                    confirmed_at =
-                        CASE
-                            WHEN $5 = 'confirmed'
-                            THEN COALESCE(
-                                confirmed_at,
-                                NOW()
-                            )
-                            ELSE confirmed_at
-                        END,
+                confirmed_at =
+                    CASE
+                        WHEN $5 = 'confirmed'
+                        THEN COALESCE(
+                            confirmed_at,
+                            NOW()
+                        )
+                        ELSE confirmed_at
+                    END,
 
-                    revalidated_at =
-                        NOW(),
+                revalidated_at =
+                    NOW(),
 
-                    spam =
-                        COALESCE($7, spam)
+                spam =
+                    COALESCE($7, spam)
 
-                 WHERE id = $8
+             WHERE id = $8
 
-                 RETURNING *`,
+             RETURNING *`,
                 [
                     allocated_amount ?? null,
                     score ?? null,
@@ -736,6 +937,7 @@ const matchController = {
                 match: result.rows[0]
             });
 
+
         } catch (err) {
 
             console.error(err);
@@ -756,12 +958,62 @@ const matchController = {
 
         const { matchid } = req.params;
 
+        const {
+            user_id
+        } = req.body;
+
+
         try {
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult = await db.query(
+                `
+            SELECT role
+            FROM users
+            WHERE id = $1
+            LIMIT 1
+            `,
+                [user_id]
+            );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            // ====================================================
+            // ONLY OWNER CAN DELETE
+            // ====================================================
+
+            if (userRole !== "owner") {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Only owner can permanently delete matches"
+                });
+            }
+
+
+            // ====================================================
+            // DELETE
+            // ====================================================
 
             const result = await db.query(
                 `DELETE FROM matches
-                 WHERE id = $1
-                 RETURNING *`,
+             WHERE id = $1
+             RETURNING *`,
                 [matchid]
             );
 
@@ -780,6 +1032,7 @@ const matchController = {
                 match: result.rows[0]
             });
 
+
         } catch (err) {
 
             console.error(err);
@@ -789,7 +1042,7 @@ const matchController = {
                 error: err.message
             });
         }
-    }
+    },
 };
 
 

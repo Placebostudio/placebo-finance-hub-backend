@@ -13,11 +13,66 @@ const reportController = {
     // GET ALL REPORTS
     // ============================================================
 
+    // ============================================================
+    // GET ALL REPORTS
+    // ============================================================
+
     async getReports(req, res) {
 
         try {
 
-            const { spam } = req.query;
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const user_id =
+                req.query.user_id;
+
+            const permissionResult =
+                await db.query(
+                    `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                    [user_id]
+                );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            if (
+                userRole !== "viewer" &&
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
+
+            // ====================================================
+            // GET REPORTS
+            // ====================================================
+
+            const { spam } =
+                req.query;
+
 
             let query = `
             SELECT *
@@ -26,6 +81,7 @@ const reportController = {
         `;
 
             const params = [];
+
 
             if (spam !== undefined) {
 
@@ -38,22 +94,29 @@ const reportController = {
             `;
             }
 
+
             query += `
             ORDER BY generated_at DESC
         `;
 
-            const result = await db.query(
-                query,
-                params
-            );
 
-            res.json(result.rows);
+            const result =
+                await db.query(
+                    query,
+                    params
+                );
+
+
+            return res.json(
+                result.rows
+            );
 
         } catch (err) {
 
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
+                success: false,
                 error: err.message
             });
         }
@@ -65,36 +128,106 @@ const reportController = {
     // ============================================================
 
     async getReport(req, res) {
+
         // ============================================================
-        // SPECIAL REPORT: EXPENSE LEDGER
+        // CHECK USER + PERMISSION
         // ============================================================
 
-        if (req.params.reportid === "expense-ledger") {
-
-            return reportController.getExpenseLedger(
-                req,
-                res
-            );
-        }
+        const user_id =
+            req.query.user_id;
 
         try {
-            const result = await db.query(`
+
+            const permissionResult =
+                await db.query(
+                    `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                    [user_id]
+                );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            if (
+                userRole !== "viewer" &&
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
+
+            // ====================================================
+            // SPECIAL REPORT: EXPENSE LEDGER
+            // ====================================================
+
+            if (
+                req.params.reportid ===
+                "expense-ledger"
+            ) {
+
+                return reportController.getExpenseLedger(
+                    req,
+                    res
+                );
+            }
+
+
+            // ====================================================
+            // GET REPORT
+            // ====================================================
+
+            const result =
+                await db.query(
+                    `
                 SELECT *
                 FROM reports
                 WHERE id = $1
-            `, [req.params.reportid]);
+                `,
+                    [req.params.reportid]
+                );
+
 
             if (result.rows.length === 0) {
+
                 return res.status(404).json({
+                    success: false,
                     error: "Report not found"
                 });
             }
 
-            res.json(result.rows[0]);
+
+            return res.json(
+                result.rows[0]
+            );
 
         } catch (err) {
+
             console.error(err);
-            res.status(500).json({ error: err.message });
+
+            return res.status(500).json({
+                success: false,
+                error: err.message
+            });
         }
     },
 
@@ -104,7 +237,9 @@ const reportController = {
     // ============================================================
 
     async addReport(req, res) {
+
         try {
+
             const {
                 period,
                 project_id,
@@ -112,22 +247,75 @@ const reportController = {
                 storage_path,
                 generated_by,
                 is_current = true,
-                spam = false
+                spam = false,
+                user_id
             } = req.body;
+
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult =
+                await db.query(
+                    `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                    [user_id]
+                );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
 
 
             // ====================================================
             // VALIDATE SPAM
             // ====================================================
 
-            if (typeof spam !== "boolean") {
+            if (
+                typeof spam !== "boolean"
+            ) {
+
                 return res.status(400).json({
-                    error: "spam must be true or false"
+                    success: false,
+                    error:
+                        "spam must be true or false"
                 });
             }
 
 
-            const result = await db.query(`
+            // ====================================================
+            // CREATE REPORT
+            // ====================================================
+
+            const result =
+                await db.query(
+                    `
                 INSERT INTO reports (
                     period,
                     project_id,
@@ -137,23 +325,41 @@ const reportController = {
                     is_current,
                     spam
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7
+                )
                 RETURNING *
-            `, [
-                period,
-                project_id || null,
-                kind,
-                storage_path,
-                generated_by || null,
-                is_current,
-                spam
-            ]);
+                `,
+                    [
+                        period,
+                        project_id || null,
+                        kind,
+                        storage_path,
+                        generated_by || null,
+                        is_current,
+                        spam
+                    ]
+                );
 
-            res.status(201).json(result.rows[0]);
+
+            return res.status(201).json(
+                result.rows[0]
+            );
 
         } catch (err) {
+
             console.error(err);
-            res.status(500).json({ error: err.message });
+
+            return res.status(500).json({
+                success: false,
+                error: err.message
+            });
         }
     },
 
@@ -168,7 +374,9 @@ const reportController = {
     // ============================================================
 
     async updateReport(req, res) {
+
         try {
+
             const {
                 period,
                 project_id,
@@ -176,8 +384,51 @@ const reportController = {
                 storage_path,
                 generated_by,
                 is_current,
-                spam
+                spam,
+                user_id
             } = req.body;
+
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult =
+                await db.query(
+                    `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                    [user_id]
+                );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            // Manager and owner can update
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
 
 
             // ====================================================
@@ -188,49 +439,88 @@ const reportController = {
                 spam !== undefined &&
                 typeof spam !== "boolean"
             ) {
+
                 return res.status(400).json({
+                    success: false,
                     error: "spam must be true or false"
                 });
             }
 
 
-            const result = await db.query(`
+            // ====================================================
+            // UPDATE
+            // ====================================================
+
+            const result =
+                await db.query(
+                    `
                 UPDATE reports
                 SET
-                    period = COALESCE($1, period),
-                    project_id = COALESCE($2, project_id),
-                    kind = COALESCE($3, kind),
-                    storage_path = COALESCE($4, storage_path),
-                    generated_by = COALESCE($5, generated_by),
-                    is_current = COALESCE($6, is_current),
-                    spam = COALESCE($7, spam)
+                    period =
+                        COALESCE($1, period),
+
+                    project_id =
+                        COALESCE($2, project_id),
+
+                    kind =
+                        COALESCE($3, kind),
+
+                    storage_path =
+                        COALESCE($4, storage_path),
+
+                    generated_by =
+                        COALESCE($5, generated_by),
+
+                    is_current =
+                        COALESCE($6, is_current),
+
+                    spam =
+                        COALESCE($7, spam)
+
                 WHERE id = $8
+
                 RETURNING *
-            `, [
-                period ?? null,
-                project_id ?? null,
-                kind ?? null,
-                storage_path ?? null,
-                generated_by ?? null,
-                is_current ?? null,
-                spam !== undefined ? spam : null,
-                req.params.reportid
-            ]);
+                `,
+                    [
+                        period ?? null,
+                        project_id ?? null,
+                        kind ?? null,
+                        storage_path ?? null,
+                        generated_by ?? null,
+                        is_current ?? null,
+                        spam !== undefined
+                            ? spam
+                            : null,
+                        req.params.reportid
+                    ]
+                );
+
 
             if (result.rows.length === 0) {
+
                 return res.status(404).json({
+                    success: false,
                     error: "Report not found"
                 });
             }
 
-            res.json(result.rows[0]);
+
+            return res.json({
+                success: true,
+                report: result.rows[0]
+            });
+
 
         } catch (err) {
+
             console.error(err);
-            res.status(500).json({ error: err.message });
+
+            return res.status(500).json({
+                success: false,
+                error: err.message
+            });
         }
     },
-
 
 
     // ============================================================
@@ -238,27 +528,95 @@ const reportController = {
     // ============================================================
 
     async deleteReport(req, res) {
+
         try {
-            const result = await db.query(`
+
+            const {
+                user_id
+            } = req.body;
+
+
+            // ====================================================
+            // CHECK USER + PERMISSION
+            // ====================================================
+
+            const permissionResult =
+                await db.query(
+                    `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                    [user_id]
+                );
+
+
+            if (permissionResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                permissionResult.rows[0].role;
+
+
+            // ====================================================
+            // ONLY OWNER CAN DELETE
+            // ====================================================
+
+            if (userRole !== "owner") {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Only owner can permanently delete reports"
+                });
+            }
+
+
+            // ====================================================
+            // DELETE
+            // ====================================================
+
+            const result =
+                await db.query(
+                    `
                 DELETE FROM reports
                 WHERE id = $1
                 RETURNING *
-            `, [req.params.reportid]);
+                `,
+                    [req.params.reportid]
+                );
+
 
             if (result.rows.length === 0) {
+
                 return res.status(404).json({
+                    success: false,
                     error: "Report not found"
                 });
             }
 
-            res.json({
+
+            return res.json({
                 success: true,
                 report: result.rows[0]
             });
 
+
         } catch (err) {
+
             console.error(err);
-            res.status(500).json({ error: err.message });
+
+            return res.status(500).json({
+                success: false,
+                error: err.message
+            });
         }
     },
 
@@ -281,15 +639,66 @@ const reportController = {
     // ============================================================
 
     async getExpenseLedger(req, res) {
+
         const {
             period,
             payment_method,
             receipt_status,
             coverage_state,
-            search
+            search,
+            user_id
         } = req.query;
 
+
         try {
+
+            // ============================================================
+            // CHECK USER + PERMISSION
+            // ============================================================
+
+            const userResult = await db.query(
+                `
+            SELECT role
+            FROM users
+            WHERE id = $1
+            LIMIT 1
+            `,
+                [user_id]
+            );
+
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole = userResult.rows[0].role;
+
+
+            // ============================================================
+            // VIEWER / MANAGER / OWNER CAN VIEW
+            // ============================================================
+
+            if (
+                userRole !== "viewer" &&
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
+
+            // ============================================================
+            // LOAD EXPENSE LEDGER
+            // ============================================================
 
             const result = await db.query(
                 `
@@ -376,7 +785,7 @@ const reportController = {
                 s.file_name AS statement_file_name,
                 s.transaction_count AS statement_transaction_count,
                 s.uploaded_by AS statement_uploaded_by,
-                s.created_at AS statement_created_at    
+                s.created_at AS statement_created_at
 
             FROM expenses e
 
@@ -407,7 +816,10 @@ const reportController = {
 
                 AND (
                     $1::text IS NULL
-                    OR TO_CHAR(e.document_date, 'YYYY-MM') = $1::text
+                    OR TO_CHAR(
+                        e.document_date,
+                        'YYYY-MM'
+                    ) = $1::text
                 )
 
                 AND (
@@ -434,9 +846,14 @@ const reportController = {
 
                 AND (
                     $5::text IS NULL
-                    OR LOWER(e.vendor_name) LIKE LOWER('%' || $5::text || '%')
-                    OR LOWER(e.document_number) LIKE LOWER('%' || $5::text || '%')
-                    OR LOWER(t.description) LIKE LOWER('%' || $5::text || '%')
+                    OR LOWER(e.vendor_name)
+                        LIKE LOWER('%' || $5::text || '%')
+
+                    OR LOWER(e.document_number)
+                        LIKE LOWER('%' || $5::text || '%')
+
+                    OR LOWER(t.description)
+                        LIKE LOWER('%' || $5::text || '%')
                 )
 
             ORDER BY
@@ -452,7 +869,9 @@ const reportController = {
                 ]
             );
 
+
             return res.json(result.rows);
+
 
         } catch (err) {
 

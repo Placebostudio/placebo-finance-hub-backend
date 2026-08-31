@@ -12,8 +12,42 @@ const vendorController = {
 
             const {
                 spam,
-                is_active
+                is_active,
+                user_id
             } = req.query;
+
+
+            // ========================================================
+            // CHECK USER
+            // ========================================================
+
+            if (!user_id) {
+
+                return res.status(401).json({
+                    error: "user_id is required"
+                });
+            }
+
+            const userResult = await db.query(
+                `
+                SELECT id, role
+                FROM users
+                WHERE id = $1
+                `,
+                [user_id]
+            );
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    error: "User not found"
+                });
+            }
+
+
+            // ========================================================
+            // GET VENDORS
+            // ========================================================
 
             const conditions = [];
             const values = [];
@@ -45,23 +79,25 @@ const vendorController = {
                     ? `WHERE ${conditions.join(" AND ")}`
                     : "";
 
+
             const result = await db.query(
                 `
-            SELECT *
-            FROM vendors
-            ${whereClause}
-            ORDER BY name ASC
-            `,
+                SELECT *
+                FROM vendors
+                ${whereClause}
+                ORDER BY name ASC
+                `,
                 values
             );
 
-            res.json(result.rows);
+
+            return res.json(result.rows);
 
         } catch (err) {
 
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
                 error: err.message
             });
         }
@@ -73,13 +109,55 @@ const vendorController = {
     // ============================================================
 
     async getVendor(req, res) {
+
         try {
 
-            const result = await db.query(`
+            const {
+                user_id
+            } = req.query;
+
+
+            // ========================================================
+            // CHECK USER
+            // ========================================================
+
+            if (!user_id) {
+
+                return res.status(401).json({
+                    error: "user_id is required"
+                });
+            }
+
+            const userResult = await db.query(
+                `
+                SELECT id, role
+                FROM users
+                WHERE id = $1
+                `,
+                [user_id]
+            );
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    error: "User not found"
+                });
+            }
+
+
+            // ========================================================
+            // GET VENDOR
+            // ========================================================
+
+            const result = await db.query(
+                `
                 SELECT *
                 FROM vendors
                 WHERE id = $1
-            `, [req.params.vendorid]);
+                `,
+                [req.params.vendorid]
+            );
+
 
             if (result.rows.length === 0) {
 
@@ -88,13 +166,14 @@ const vendorController = {
                 });
             }
 
-            res.json(result.rows[0]);
+
+            return res.json(result.rows[0]);
 
         } catch (err) {
 
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
                 error: err.message
             });
         }
@@ -103,6 +182,10 @@ const vendorController = {
 
     // ============================================================
     // ADD VENDOR
+    //
+    // VIEWER  -> NO
+    // MANAGER -> YES
+    // OWNER   -> YES
     // ============================================================
 
     async addVendor(req, res) {
@@ -110,6 +193,7 @@ const vendorController = {
         try {
 
             const {
+                user_id,
                 name,
                 normalized_name,
                 aliases = [],
@@ -122,7 +206,59 @@ const vendorController = {
             } = req.body;
 
 
-            const result = await db.query(`
+            // ========================================================
+            // CHECK USER
+            // ========================================================
+
+            if (!user_id) {
+
+                return res.status(401).json({
+                    error: "user_id is required"
+                });
+            }
+
+            const userResult = await db.query(
+                `
+                SELECT id, role
+                FROM users
+                WHERE id = $1
+                `,
+                [user_id]
+            );
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    error: "User not found"
+                });
+            }
+
+
+            const user = userResult.rows[0];
+
+
+            // ========================================================
+            // CHECK PERMISSION
+            // ========================================================
+
+            if (
+                user.role !== "manager" &&
+                user.role !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    error:
+                        "You do not have permission to create vendors"
+                });
+            }
+
+
+            // ========================================================
+            // CREATE
+            // ========================================================
+
+            const result = await db.query(
+                `
                 INSERT INTO vendors (
                     name,
                     normalized_name,
@@ -146,26 +282,30 @@ const vendorController = {
                     $9
                 )
                 RETURNING *
-            `, [
-                name,
-                normalized_name ?? null,
-                JSON.stringify(aliases),
-                default_category_id || null,
-                default_vat_rate ?? null,
-                country_code || null,
-                vat_number || null,
-                is_active,
-                spam
-            ]);
+                `,
+                [
+                    name,
+                    normalized_name ?? null,
+                    JSON.stringify(aliases),
+                    default_category_id || null,
+                    default_vat_rate ?? null,
+                    country_code || null,
+                    vat_number || null,
+                    is_active,
+                    spam
+                ]
+            );
 
 
-            res.status(201).json(result.rows[0]);
+            return res.status(201).json(
+                result.rows[0]
+            );
 
         } catch (err) {
 
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
                 error: err.message
             });
         }
@@ -175,19 +315,15 @@ const vendorController = {
     // ============================================================
     // UPDATE VENDOR
     //
-    // Can update:
-    // - all normal fields
-    // - ONLY spam
+    // VIEWER  -> NO
+    // MANAGER -> YES
+    // OWNER   -> YES
     //
-    // Examples:
-    //
-    // { "spam": true }
-    //
-    // or
+    // This also allows the manager to perform SOFT DELETE
+    // by setting:
     //
     // {
-    //   "name": "Example",
-    //   "is_active": true
+    //     "spam": true
     // }
     // ============================================================
 
@@ -196,6 +332,7 @@ const vendorController = {
         try {
 
             const {
+                user_id,
                 name,
                 normalized_name,
                 aliases,
@@ -209,10 +346,58 @@ const vendorController = {
 
 
             // ========================================================
+            // CHECK USER
+            // ========================================================
+
+            if (!user_id) {
+
+                return res.status(401).json({
+                    error: "user_id is required"
+                });
+            }
+
+            const userResult = await db.query(
+                `
+                SELECT id, role
+                FROM users
+                WHERE id = $1
+                `,
+                [user_id]
+            );
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    error: "User not found"
+                });
+            }
+
+
+            const user = userResult.rows[0];
+
+
+            // ========================================================
+            // CHECK PERMISSION
+            // ========================================================
+
+            if (
+                user.role !== "manager" &&
+                user.role !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    error:
+                        "You do not have permission to update vendors"
+                });
+            }
+
+
+            // ========================================================
             // UPDATE
             // ========================================================
 
-            const result = await db.query(`
+            const result = await db.query(
+                `
                 UPDATE vendors
                 SET
                     name =
@@ -245,20 +430,31 @@ const vendorController = {
                 WHERE id = $10
 
                 RETURNING *
-            `, [
-                name ?? null,
-                normalized_name ?? null,
-                aliases !== undefined
-                    ? JSON.stringify(aliases)
-                    : null,
-                default_category_id ?? null,
-                default_vat_rate ?? null,
-                country_code ?? null,
-                vat_number ?? null,
-                is_active ?? null,
-                spam ?? null,
-                req.params.vendorid
-            ]);
+                `,
+                [
+                    name ?? null,
+
+                    normalized_name ?? null,
+
+                    aliases !== undefined
+                        ? JSON.stringify(aliases)
+                        : null,
+
+                    default_category_id ?? null,
+
+                    default_vat_rate ?? null,
+
+                    country_code ?? null,
+
+                    vat_number ?? null,
+
+                    is_active ?? null,
+
+                    spam ?? null,
+
+                    req.params.vendorid
+                ]
+            );
 
 
             if (result.rows.length === 0) {
@@ -269,13 +465,15 @@ const vendorController = {
             }
 
 
-            res.json(result.rows[0]);
+            return res.json(
+                result.rows[0]
+            );
 
         } catch (err) {
 
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
                 error: err.message
             });
         }
@@ -283,20 +481,84 @@ const vendorController = {
 
 
     // ============================================================
-    // DELETE VENDOR
+    // SOFT DELETE VENDOR
     //
-    // HARD DELETE
+    // VIEWER  -> NO
+    // MANAGER -> YES
+    // OWNER   -> YES
+    //
+    // Sets spam = true.
     // ============================================================
 
-    async deleteVendor(req, res) {
+    async softDeleteVendor(req, res) {
 
         try {
 
-            const result = await db.query(`
-                DELETE FROM vendors
+            const {
+                user_id
+            } = req.body;
+
+
+            // ========================================================
+            // CHECK USER
+            // ========================================================
+
+            if (!user_id) {
+
+                return res.status(401).json({
+                    error: "user_id is required"
+                });
+            }
+
+            const userResult = await db.query(
+                `
+                SELECT id, role
+                FROM users
+                WHERE id = $1
+                `,
+                [user_id]
+            );
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    error: "User not found"
+                });
+            }
+
+
+            const user = userResult.rows[0];
+
+
+            // ========================================================
+            // CHECK PERMISSION
+            // ========================================================
+
+            if (
+                user.role !== "manager" &&
+                user.role !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    error:
+                        "You do not have permission to delete vendors"
+                });
+            }
+
+
+            // ========================================================
+            // SOFT DELETE
+            // ========================================================
+
+            const result = await db.query(
+                `
+                UPDATE vendors
+                SET spam = true
                 WHERE id = $1
                 RETURNING *
-            `, [req.params.vendorid]);
+                `,
+                [req.params.vendorid]
+            );
 
 
             if (result.rows.length === 0) {
@@ -307,7 +569,7 @@ const vendorController = {
             }
 
 
-            res.json({
+            return res.json({
                 success: true,
                 vendor: result.rows[0]
             });
@@ -316,7 +578,106 @@ const vendorController = {
 
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
+                error: err.message
+            });
+        }
+    },
+
+
+    // ============================================================
+    // HARD DELETE VENDOR
+    //
+    // VIEWER  -> NO
+    // MANAGER -> NO
+    // OWNER   -> YES
+    // ============================================================
+
+    async deleteVendor(req, res) {
+
+        try {
+
+            const {
+                user_id
+            } = req.body;
+
+
+            // ========================================================
+            // CHECK USER
+            // ========================================================
+
+            if (!user_id) {
+
+                return res.status(401).json({
+                    error: "user_id is required"
+                });
+            }
+
+            const userResult = await db.query(
+                `
+                SELECT id, role
+                FROM users
+                WHERE id = $1
+                `,
+                [user_id]
+            );
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    error: "User not found"
+                });
+            }
+
+
+            const user = userResult.rows[0];
+
+
+            // ========================================================
+            // ONLY OWNER
+            // ========================================================
+
+            if (user.role !== "owner") {
+
+                return res.status(403).json({
+                    error:
+                        "Only the owner can permanently delete vendors"
+                });
+            }
+
+
+            // ========================================================
+            // HARD DELETE
+            // ========================================================
+
+            const result = await db.query(
+                `
+                DELETE FROM vendors
+                WHERE id = $1
+                RETURNING *
+                `,
+                [req.params.vendorid]
+            );
+
+
+            if (result.rows.length === 0) {
+
+                return res.status(404).json({
+                    error: "Vendor not found"
+                });
+            }
+
+
+            return res.json({
+                success: true,
+                vendor: result.rows[0]
+            });
+
+        } catch (err) {
+
+            console.error(err);
+
+            return res.status(500).json({
                 error: err.message
             });
         }

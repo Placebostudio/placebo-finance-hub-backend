@@ -18,7 +18,7 @@ const ALLOWED_TYPES = [
   "application/pdf"
 ];
 
-const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
 const VALID_EXTRACTION_METHODS = [
   "pdf_text",
@@ -26,6 +26,88 @@ const VALID_EXTRACTION_METHODS = [
   "scanned_pdf_ocr",
   "manual"
 ];
+
+
+// ============================================================
+// USER PERMISSION
+// ============================================================
+//
+// viewer  -> GET only
+// manager -> GET + create + update + soft delete + restore
+// owner   -> everything, including permanent delete
+//
+// ============================================================
+
+async function getUserRole(userId) {
+
+  if (!userId) {
+    return null;
+  }
+
+  const result = await db.query(
+    `
+    SELECT
+      id,
+      role
+    FROM users
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [userId]
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return result.rows[0].role;
+}
+
+
+async function requirePermission(req, res, allowedRoles) {
+
+  const userId =
+    req.body?.user_id ??
+    req.query?.user_id ??
+    req.params?.user_id;
+
+  if (!userId) {
+
+    res.status(401).json({
+      success: false,
+      error: "user_id is required"
+    });
+
+    return null;
+  }
+
+  const role = await getUserRole(userId);
+
+  if (!role) {
+
+    res.status(401).json({
+      success: false,
+      error: "User not found"
+    });
+
+    return null;
+  }
+
+  if (!allowedRoles.includes(role)) {
+
+    res.status(403).json({
+      success: false,
+      error: "You do not have permission to perform this action"
+    });
+
+    return null;
+  }
+
+  return {
+    id: userId,
+    role
+  };
+}
 
 
 exports.documentController = {
@@ -38,16 +120,33 @@ exports.documentController = {
 
     try {
 
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "viewer",
+          "manager",
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
+
       const {
         status,
         spam
       } = req.query;
+
 
       const values = [];
 
       const conditions = [
         "deleted_at IS NULL"
       ];
+
 
       if (status) {
 
@@ -57,6 +156,7 @@ exports.documentController = {
           `status = $${values.length}`
         );
       }
+
 
       if (spam === "true" || spam === "false") {
 
@@ -69,29 +169,33 @@ exports.documentController = {
         );
       }
 
+
       const result = await db.query(
-        `SELECT
-                id,
-                document_no,
-                file_name,
-                file_type,
-                file_size,
-                storage_path,
-                checksum_sha256,
-                page_count,
-                status,
-                extraction_status,
-                notes,
-                uploaded_by,
-                uploaded_at,
-                updated_at,
-                deleted_at,
-                spam
-             FROM documents
-             WHERE ${conditions.join(" AND ")}
-             ORDER BY uploaded_at DESC`,
+        `
+        SELECT
+          id,
+          document_no,
+          file_name,
+          file_type,
+          file_size,
+          storage_path,
+          checksum_sha256,
+          page_count,
+          status,
+          extraction_status,
+          notes,
+          uploaded_by,
+          uploaded_at,
+          updated_at,
+          deleted_at,
+          spam
+        FROM documents
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY uploaded_at DESC
+        `,
         values
       );
+
 
       return res.json(result.rows);
 
@@ -106,6 +210,7 @@ exports.documentController = {
     }
   },
 
+
   // ============================================================
   // GET ONE DOCUMENT
   // ============================================================
@@ -116,29 +221,47 @@ exports.documentController = {
 
     try {
 
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "viewer",
+          "manager",
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
+
       const result = await db.query(
-        `SELECT
-                    id,
-                    document_no,
-                    file_name,
-                    file_type,
-                    file_size,
-                    storage_path,
-                    checksum_sha256,
-                    page_count,
-                    status,
-                    extraction_status,
-                    notes,
-                    uploaded_by,
-                    uploaded_at,
-                    updated_at,
-                    deleted_at,
-                    spam
-                 FROM documents
-                 WHERE id = $1
-                   AND deleted_at IS NULL`,
+        `
+        SELECT
+          id,
+          document_no,
+          file_name,
+          file_type,
+          file_size,
+          storage_path,
+          checksum_sha256,
+          page_count,
+          status,
+          extraction_status,
+          notes,
+          uploaded_by,
+          uploaded_at,
+          updated_at,
+          deleted_at,
+          spam
+        FROM documents
+        WHERE id = $1
+          AND deleted_at IS NULL
+        `,
         [documentid]
       );
+
 
       if (result.rows.length === 0) {
 
@@ -148,18 +271,25 @@ exports.documentController = {
         });
       }
 
+
       const document = result.rows[0];
 
-      const { data, error } = await supabase.storage
+
+      const {
+        data,
+        error
+      } = await supabase.storage
         .from(BUCKET_NAME)
         .createSignedUrl(
           document.storage_path,
           60 * 10
         );
 
+
       if (error) {
         throw error;
       }
+
 
       return res.json({
         ...document,
@@ -180,15 +310,6 @@ exports.documentController = {
 
   // ============================================================
   // UPLOAD DOCUMENT
-  //
-  // 1. Validate file
-  // 2. Calculate checksum
-  // 3. Check duplicate
-  // 4. Upload to Supabase Storage
-  // 5. Create documents row
-  //
-  // If creating the DB row fails:
-  // -> delete the uploaded file
   // ============================================================
 
   async uploadDocument(req, res) {
@@ -197,8 +318,21 @@ exports.documentController = {
 
     try {
 
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "manager",
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
+
       const {
-        uploaded_by,
         notes
       } = req.body;
 
@@ -243,19 +377,6 @@ exports.documentController = {
 
 
       // ----------------------------------------------------
-      // USER
-      // ----------------------------------------------------
-
-      if (!uploaded_by) {
-
-        return res.status(400).json({
-          success: false,
-          error: "uploaded_by is required"
-        });
-      }
-
-
-      // ----------------------------------------------------
       // CHECKSUM
       // ----------------------------------------------------
 
@@ -270,15 +391,17 @@ exports.documentController = {
       // ----------------------------------------------------
 
       const duplicate = await db.query(
-        `SELECT
-                    id,
-                    document_no,
-                    file_name,
-                    storage_path
-                 FROM documents
-                 WHERE checksum_sha256 = $1
-                   AND deleted_at IS NULL
-                 LIMIT 1`,
+        `
+        SELECT
+          id,
+          document_no,
+          file_name,
+          storage_path
+        FROM documents
+        WHERE checksum_sha256 = $1
+          AND deleted_at IS NULL
+        LIMIT 1
+        `,
         [checksum]
       );
 
@@ -305,21 +428,22 @@ exports.documentController = {
       // ----------------------------------------------------
 
       const safeFileName =
-        req.file.originalname
-          .replace(
-            /[^a-zA-Z0-9._-]/g,
-            "_"
-          );
+        req.file.originalname.replace(
+          /[^a-zA-Z0-9._-]/g,
+          "_"
+        );
+
 
       const fileName =
         `${Date.now()}-${safeFileName}`;
+
 
       storagePath =
         `${STORAGE_FOLDER}/${documentId}/${fileName}`;
 
 
       // ----------------------------------------------------
-      // UPLOAD FILE
+      // UPLOAD
       // ----------------------------------------------------
 
       const {
@@ -342,7 +466,7 @@ exports.documentController = {
 
 
       // ----------------------------------------------------
-      // CREATE DOCUMENT ROW
+      // CREATE DB ROW
       // ----------------------------------------------------
 
       let result;
@@ -350,51 +474,53 @@ exports.documentController = {
       try {
 
         result = await db.query(
-          `INSERT INTO documents (
-                        id,
-                        file_name,
-                        file_type,
-                        file_size,
-                        storage_path,
-                        checksum_sha256,
-                        page_count,
-                        status,
-                        extraction_status,
-                        notes,
-                        uploaded_by,
-                        spam
-                    )
-                    VALUES (
-                        $1,
-                        $2,
-                        $3,
-                        $4,
-                        $5,
-                        $6,
-                        $7,
-                        $8,
-                        $9,
-                        $10,
-                        $11,
-                        $12
-                    )
-                    RETURNING
-                        id,
-                        document_no,
-                        file_name,
-                        file_type,
-                        file_size,
-                        storage_path,
-                        checksum_sha256,
-                        page_count,
-                        status,
-                        extraction_status,
-                        notes,
-                        uploaded_by,
-                        uploaded_at,
-                        updated_at,
-                        deleted_at,
-                        spam`,
+          `
+          INSERT INTO documents (
+            id,
+            file_name,
+            file_type,
+            file_size,
+            storage_path,
+            checksum_sha256,
+            page_count,
+            status,
+            extraction_status,
+            notes,
+            uploaded_by,
+            spam
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10,
+            $11,
+            $12
+          )
+          RETURNING
+            id,
+            document_no,
+            file_name,
+            file_type,
+            file_size,
+            storage_path,
+            checksum_sha256,
+            page_count,
+            status,
+            extraction_status,
+            notes,
+            uploaded_by,
+            uploaded_at,
+            updated_at,
+            deleted_at,
+            spam
+          `,
           [
             documentId,
             req.file.originalname,
@@ -406,18 +532,12 @@ exports.documentController = {
             "pending_review",
             "uploaded",
             notes ?? null,
-            uploaded_by,
+            user.id,
             false
           ]
         );
 
       } catch (dbError) {
-
-        // ------------------------------------------------
-        // DB FAILED
-        // Remove the uploaded file so storage does not
-        // contain an orphaned file.
-        // ------------------------------------------------
 
         try {
 
@@ -440,24 +560,24 @@ exports.documentController = {
 
 
       // ----------------------------------------------------
-      // PUBLIC URL
+      // SIGNED URL
       // ----------------------------------------------------
 
-      const { data, error } = await supabase.storage
+      const {
+        data,
+        error
+      } = await supabase.storage
         .from(BUCKET_NAME)
         .createSignedUrl(
           storagePath,
           60 * 10
         );
 
+
       if (error) {
         throw error;
       }
 
-
-      // ----------------------------------------------------
-      // RETURN
-      // ----------------------------------------------------
 
       return res.status(201).json({
 
@@ -481,46 +601,82 @@ exports.documentController = {
     }
   },
 
+
+  // ============================================================
+  // GET DOCUMENT FILE URL
+  // ============================================================
+
   async getDocumentFileUrl(req, res) {
+
     try {
+
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "viewer",
+          "manager",
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
+
       const { id } = req.params;
+
 
       const result = await db.query(
         `
-      SELECT storage_path
-      FROM documents
-      WHERE id = $1
-        AND deleted_at IS NULL
-      `,
+        SELECT
+          storage_path
+        FROM documents
+        WHERE id = $1
+          AND deleted_at IS NULL
+        `,
         [id]
       );
 
+
       if (result.rows.length === 0) {
+
         return res.status(404).json({
           success: false,
           error: "Document not found"
         });
       }
 
-      const storagePath = result.rows[0].storage_path;
+
+      const storagePath =
+        result.rows[0].storage_path;
+
 
       if (!storagePath) {
+
         return res.status(404).json({
           success: false,
           error: "Document has no storage file"
         });
       }
 
-      const { data, error } = await supabase.storage
+
+      const {
+        data,
+        error
+      } = await supabase.storage
         .from(BUCKET_NAME)
         .createSignedUrl(
           storagePath,
           60 * 10
         );
 
+
       if (error) {
         throw error;
       }
+
 
       return res.json({
         success: true,
@@ -528,6 +684,7 @@ exports.documentController = {
       });
 
     } catch (err) {
+
       console.error(err);
 
       return res.status(500).json({
@@ -539,40 +696,53 @@ exports.documentController = {
 
 
   // ============================================================
-  // CREATE DOCUMENT WITHOUT FILE UPLOAD
+  // CREATE DOCUMENT WITHOUT FILE
   // ============================================================
 
   async addDocument(req, res) {
 
-    const {
-      file_name,
-      file_type,
-      file_size,
-      storage_path,
-      checksum_sha256,
-      page_count,
-      status = "pending_review",
-      extraction_status = "uploaded",
-      notes,
-      uploaded_by,
-      spam = false
-    } = req.body;
-
     try {
+
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "manager",
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
+
+      const {
+        file_name,
+        file_type,
+        file_size,
+        storage_path,
+        checksum_sha256,
+        page_count,
+        status = "pending_review",
+        extraction_status = "uploaded",
+        notes,
+        spam = false
+      } = req.body;
+
 
       if (
         !file_name ||
         !file_type ||
         file_size === undefined ||
         !storage_path ||
-        !checksum_sha256 ||
-        !uploaded_by
+        !checksum_sha256
       ) {
 
         return res.status(400).json({
           success: false,
           error:
-            "file_name, file_type, file_size, storage_path, checksum_sha256 and uploaded_by are required"
+            "file_name, file_type, file_size, storage_path and checksum_sha256 are required"
         });
       }
 
@@ -596,49 +766,51 @@ exports.documentController = {
 
 
       const result = await db.query(
-        `INSERT INTO documents (
-                    file_name,
-                    file_type,
-                    file_size,
-                    storage_path,
-                    checksum_sha256,
-                    page_count,
-                    status,
-                    extraction_status,
-                    notes,
-                    uploaded_by,
-                    spam
-                )
-                VALUES (
-                    $1,
-                    $2,
-                    $3,
-                    $4,
-                    $5,
-                    $6,
-                    $7,
-                    $8,
-                    $9,
-                    $10,
-                    $11
-                )
-                RETURNING
-                    id,
-                    document_no,
-                    file_name,
-                    file_type,
-                    file_size,
-                    storage_path,
-                    checksum_sha256,
-                    page_count,
-                    status,
-                    extraction_status,
-                    notes,
-                    uploaded_by,
-                    uploaded_at,
-                    updated_at,
-                    deleted_at,
-                    spam`,
+        `
+        INSERT INTO documents (
+          file_name,
+          file_type,
+          file_size,
+          storage_path,
+          checksum_sha256,
+          page_count,
+          status,
+          extraction_status,
+          notes,
+          uploaded_by,
+          spam
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          $11
+        )
+        RETURNING
+          id,
+          document_no,
+          file_name,
+          file_type,
+          file_size,
+          storage_path,
+          checksum_sha256,
+          page_count,
+          status,
+          extraction_status,
+          notes,
+          uploaded_by,
+          uploaded_at,
+          updated_at,
+          deleted_at,
+          spam
+        `,
         [
           file_name,
           file_type,
@@ -649,7 +821,7 @@ exports.documentController = {
           status,
           extraction_status,
           notes ?? null,
-          uploaded_by,
+          user.id,
           spam
         ]
       );
@@ -680,22 +852,36 @@ exports.documentController = {
 
     const { documentid } = req.params;
 
-    const {
-      file_name,
-      file_type,
-      file_size,
-      storage_path,
-      checksum_sha256,
-      page_count,
-      status,
-      extraction_status,
-      notes,
-      spam,
-      deleted_at
-    } = req.body;
-
-
     try {
+
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "manager",
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
+
+      const {
+        file_name,
+        file_type,
+        file_size,
+        storage_path,
+        checksum_sha256,
+        page_count,
+        status,
+        extraction_status,
+        notes,
+        spam,
+        deleted_at
+      } = req.body;
+
 
       if (
         file_size !== undefined &&
@@ -722,38 +908,64 @@ exports.documentController = {
 
 
       const result = await db.query(
-        `UPDATE documents
-                 SET
-                    file_name = COALESCE($1, file_name),
-                    file_type = COALESCE($2, file_type),
-                    file_size = COALESCE($3, file_size),
-                    storage_path = COALESCE($4, storage_path),
-                    checksum_sha256 = COALESCE($5, checksum_sha256),
-                    page_count = COALESCE($6, page_count),
-                    status = COALESCE($7, status),
-                    extraction_status = COALESCE($8, extraction_status),
-                    notes = COALESCE($9, notes),
-                    spam = COALESCE($10, spam),
-                    deleted_at = COALESCE($11, deleted_at),
-                    updated_at = NOW()
-                 WHERE id = $12
-                 RETURNING
-                    id,
-                    document_no,
-                    file_name,
-                    file_type,
-                    file_size,
-                    storage_path,
-                    checksum_sha256,
-                    page_count,
-                    status,
-                    extraction_status,
-                    notes,
-                    uploaded_by,
-                    uploaded_at,
-                    updated_at,
-                    deleted_at,
-                    spam`,
+        `
+        UPDATE documents
+        SET
+          file_name =
+            COALESCE($1, file_name),
+
+          file_type =
+            COALESCE($2, file_type),
+
+          file_size =
+            COALESCE($3, file_size),
+
+          storage_path =
+            COALESCE($4, storage_path),
+
+          checksum_sha256 =
+            COALESCE($5, checksum_sha256),
+
+          page_count =
+            COALESCE($6, page_count),
+
+          status =
+            COALESCE($7, status),
+
+          extraction_status =
+            COALESCE($8, extraction_status),
+
+          notes =
+            COALESCE($9, notes),
+
+          spam =
+            COALESCE($10, spam),
+
+          deleted_at =
+            COALESCE($11, deleted_at),
+
+          updated_at = NOW()
+
+        WHERE id = $12
+
+        RETURNING
+          id,
+          document_no,
+          file_name,
+          file_type,
+          file_size,
+          storage_path,
+          checksum_sha256,
+          page_count,
+          status,
+          extraction_status,
+          notes,
+          uploaded_by,
+          uploaded_at,
+          updated_at,
+          deleted_at,
+          spam
+        `,
         [
           file_name ?? null,
           file_type ?? null,
@@ -799,10 +1011,6 @@ exports.documentController = {
 
   // ============================================================
   // PERMANENT DELETE
-  //
-  // Deletes both:
-  // - database row
-  // - Supabase Storage file
   // ============================================================
 
   async deleteDocument(req, res) {
@@ -811,21 +1019,34 @@ exports.documentController = {
 
     try {
 
-      // ============================================================
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
+
+      // ========================================================
       // GET DOCUMENT
-      // ============================================================
+      // ========================================================
 
       const result = await db.query(
         `
-      SELECT
-        id,
-        document_no,
-        file_name,
-        storage_path,
-        spam
-      FROM documents
-      WHERE id = $1
-      `,
+        SELECT
+          id,
+          document_no,
+          file_name,
+          storage_path,
+          spam
+        FROM documents
+        WHERE id = $1
+        `,
         [documentid]
       );
 
@@ -842,27 +1063,15 @@ exports.documentController = {
       const document = result.rows[0];
 
 
-      // ============================================================
-      // DELETE ALL STORAGE FILES
-      // ============================================================
+      // ========================================================
+      // DELETE STORAGE
+      // ========================================================
 
       if (document.storage_path) {
 
-        /*
-         * Example:
-         *
-         * storage_path:
-         * documents/123/original.pdf
-         *
-         * We use everything before the filename as the folder:
-         *
-         * documents/123/
-         *
-         * Then list everything inside that folder and delete it.
-         */
-
         const lastSlash =
           document.storage_path.lastIndexOf("/");
+
 
         const folder =
           lastSlash >= 0
@@ -872,10 +1081,6 @@ exports.documentController = {
             )
             : "";
 
-
-        // ----------------------------------------------------------
-        // LIST FILES IN DOCUMENT FOLDER
-        // ----------------------------------------------------------
 
         const {
           data: files,
@@ -900,20 +1105,12 @@ exports.documentController = {
         }
 
 
-        // ----------------------------------------------------------
-        // BUILD FULL STORAGE PATHS
-        // ----------------------------------------------------------
-
         const storageFiles =
           (files || []).map(
             (file) =>
               `${folder}${file.name}`
           );
 
-
-        // ----------------------------------------------------------
-        // DELETE ALL FILES
-        // ----------------------------------------------------------
 
         if (storageFiles.length > 0) {
 
@@ -941,22 +1138,18 @@ exports.documentController = {
       }
 
 
-      // ============================================================
+      // ========================================================
       // DELETE DATABASE ROW
-      // ============================================================
+      // ========================================================
 
       await db.query(
         `
-      DELETE FROM documents
-      WHERE id = $1
-      `,
+        DELETE FROM documents
+        WHERE id = $1
+        `,
         [documentid]
       );
 
-
-      // ============================================================
-      // SUCCESS
-      // ============================================================
 
       return res.json({
 
@@ -965,17 +1158,10 @@ exports.documentController = {
         deleted: true,
 
         document: {
-          id:
-            document.id,
-
-          document_no:
-            document.document_no,
-
-          file_name:
-            document.file_name,
-
-          spam:
-            document.spam
+          id: document.id,
+          document_no: document.document_no,
+          file_name: document.file_name,
+          spam: document.spam
         }
 
       });
@@ -1007,19 +1193,35 @@ exports.documentController = {
 
     try {
 
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "manager",
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
+
       const result = await db.query(
-        `UPDATE documents
-                 SET
-                    deleted_at = NOW(),
-                    updated_at = NOW()
-                 WHERE id = $1
-                   AND deleted_at IS NULL
-                 RETURNING
-                    id,
-                    document_no,
-                    file_name,
-                    storage_path,
-                    deleted_at`,
+        `
+        UPDATE documents
+        SET
+          deleted_at = NOW(),
+          updated_at = NOW()
+        WHERE id = $1
+          AND deleted_at IS NULL
+        RETURNING
+          id,
+          document_no,
+          file_name,
+          storage_path,
+          deleted_at
+        `,
         [documentid]
       );
 
@@ -1061,30 +1263,46 @@ exports.documentController = {
 
     try {
 
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "manager",
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
+
       const result = await db.query(
-        `UPDATE documents
-                 SET
-                    deleted_at = NULL,
-                    updated_at = NOW()
-                 WHERE id = $1
-                   AND deleted_at IS NOT NULL
-                 RETURNING
-                    id,
-                    document_no,
-                    file_name,
-                    file_type,
-                    file_size,
-                    storage_path,
-                    checksum_sha256,
-                    page_count,
-                    status,
-                    extraction_status,
-                    notes,
-                    uploaded_by,
-                    uploaded_at,
-                    updated_at,
-                    deleted_at,
-                    spam`,
+        `
+        UPDATE documents
+        SET
+          deleted_at = NULL,
+          updated_at = NOW()
+        WHERE id = $1
+          AND deleted_at IS NOT NULL
+        RETURNING
+          id,
+          document_no,
+          file_name,
+          file_type,
+          file_size,
+          storage_path,
+          checksum_sha256,
+          page_count,
+          status,
+          extraction_status,
+          notes,
+          uploaded_by,
+          uploaded_at,
+          updated_at,
+          deleted_at,
+          spam
+        `,
         [documentid]
       );
 
@@ -1125,20 +1343,37 @@ exports.documentController = {
 
     try {
 
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "viewer",
+          "manager",
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
+
       const result = await db.query(
-        `SELECT
-                    document_id,
-                    method,
-                    fields,
-                    validation_issues,
-                    full_text,
-                    confidence,
-                    duration_ms,
-                    is_current,
-                    created_at
-                 FROM document_extractions
-                 WHERE document_id = $1
-                 ORDER BY created_at DESC`,
+        `
+        SELECT
+          document_id,
+          method,
+          fields,
+          validation_issues,
+          full_text,
+          confidence,
+          duration_ms,
+          is_current,
+          created_at
+        FROM document_extractions
+        WHERE document_id = $1
+        ORDER BY created_at DESC
+        `,
         [documentid]
       );
 
@@ -1167,21 +1402,38 @@ exports.documentController = {
 
     try {
 
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "viewer",
+          "manager",
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
+
       const result = await db.query(
-        `SELECT
-                    document_id,
-                    method,
-                    fields,
-                    validation_issues,
-                    full_text,
-                    confidence,
-                    duration_ms,
-                    is_current,
-                    created_at
-                 FROM document_extractions
-                 WHERE document_id = $1
-                   AND is_current = TRUE
-                 LIMIT 1`,
+        `
+        SELECT
+          document_id,
+          method,
+          fields,
+          validation_issues,
+          full_text,
+          confidence,
+          duration_ms,
+          is_current,
+          created_at
+        FROM document_extractions
+        WHERE document_id = $1
+          AND is_current = TRUE
+        LIMIT 1
+        `,
         [documentid]
       );
 
@@ -1218,6 +1470,20 @@ exports.documentController = {
     const { documentid } = req.params;
 
     try {
+
+      const user = await requirePermission(
+        req,
+        res,
+        [
+          "manager",
+          "owner"
+        ]
+      );
+
+      if (!user) {
+        return;
+      }
+
 
       const {
         method,
@@ -1263,10 +1529,12 @@ exports.documentController = {
       // ----------------------------------------------------
 
       const documentResult = await db.query(
-        `SELECT id
-                 FROM documents
-                 WHERE id = $1
-                   AND deleted_at IS NULL`,
+        `
+        SELECT id
+        FROM documents
+        WHERE id = $1
+          AND deleted_at IS NULL
+        `,
         [documentid]
       );
 
@@ -1285,10 +1553,12 @@ exports.documentController = {
       // ----------------------------------------------------
 
       await db.query(
-        `UPDATE document_extractions
-                 SET is_current = FALSE
-                 WHERE document_id = $1
-                   AND is_current = TRUE`,
+        `
+        UPDATE document_extractions
+        SET is_current = FALSE
+        WHERE document_id = $1
+          AND is_current = TRUE
+        `,
         [documentid]
       );
 
@@ -1298,36 +1568,38 @@ exports.documentController = {
       // ----------------------------------------------------
 
       const result = await db.query(
-        `INSERT INTO document_extractions (
-                    document_id,
-                    method,
-                    fields,
-                    validation_issues,
-                    full_text,
-                    confidence,
-                    duration_ms,
-                    is_current
-                )
-                VALUES (
-                    $1,
-                    $2,
-                    $3,
-                    $4,
-                    $5,
-                    $6,
-                    $7,
-                    TRUE
-                )
-                RETURNING
-                    document_id,
-                    method,
-                    fields,
-                    validation_issues,
-                    full_text,
-                    confidence,
-                    duration_ms,
-                    is_current,
-                    created_at`,
+        `
+        INSERT INTO document_extractions (
+          document_id,
+          method,
+          fields,
+          validation_issues,
+          full_text,
+          confidence,
+          duration_ms,
+          is_current
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          TRUE
+        )
+        RETURNING
+          document_id,
+          method,
+          fields,
+          validation_issues,
+          full_text,
+          confidence,
+          duration_ms,
+          is_current,
+          created_at
+        `,
         [
           documentid,
           method,
@@ -1345,11 +1617,13 @@ exports.documentController = {
       // ----------------------------------------------------
 
       await db.query(
-        `UPDATE documents
-                 SET
-                    extraction_status = 'ready_for_review',
-                    updated_at = NOW()
-                 WHERE id = $1`,
+        `
+        UPDATE documents
+        SET
+          extraction_status = 'ready_for_review',
+          updated_at = NOW()
+        WHERE id = $1
+        `,
         [documentid]
       );
 

@@ -28,8 +28,60 @@ const statementController = {
                 statement_type,
                 period,
                 source,
-                spam
+                spam,
+                user_id
             } = req.query;
+
+
+            // ====================================================
+            // CHECK USER
+            // ====================================================
+
+            const userResult = await db.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole = userResult.rows[0].role;
+
+
+            // ====================================================
+            // VIEW PERMISSION
+            //
+            // viewer, manager and owner can view
+            // ====================================================
+
+            if (
+                userRole !== "viewer" &&
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
+
+            // ====================================================
+            // BUILD QUERY
+            // ====================================================
 
             let query = `
                 SELECT
@@ -49,6 +101,7 @@ const statementController = {
             const conditions = [];
             const params = [];
 
+
             if (statement_type) {
 
                 params.push(statement_type);
@@ -57,6 +110,7 @@ const statementController = {
                     `statement_type = $${params.length}`
                 );
             }
+
 
             if (period) {
 
@@ -67,6 +121,7 @@ const statementController = {
                 );
             }
 
+
             if (source) {
 
                 params.push(source);
@@ -76,7 +131,11 @@ const statementController = {
                 );
             }
 
-            if (spam === "true" || spam === "false") {
+
+            if (
+                spam === "true" ||
+                spam === "false"
+            ) {
 
                 params.push(
                     spam === "true"
@@ -87,6 +146,7 @@ const statementController = {
                 );
             }
 
+
             if (conditions.length > 0) {
 
                 query += `
@@ -94,16 +154,20 @@ const statementController = {
                 `;
             }
 
+
             query += `
                 ORDER BY period DESC, created_at DESC
             `;
+
 
             const result = await db.query(
                 query,
                 params
             );
 
+
             return res.json(result.rows);
+
 
         } catch (err) {
 
@@ -123,12 +187,69 @@ const statementController = {
 
     async getStatement(req, res) {
 
-        const { statementid } = req.params;
+        const {
+            statementid
+        } = req.params;
+
+        const {
+            user_id
+        } = req.query;
+
 
         try {
 
+            // ====================================================
+            // CHECK USER
+            // ====================================================
+
+            const userResult = await db.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                userResult.rows[0].role;
+
+
+            // ====================================================
+            // VIEW PERMISSION
+            // ====================================================
+
+            if (
+                userRole !== "viewer" &&
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
+
+            // ====================================================
+            // GET STATEMENT
+            // ====================================================
+
             const result = await db.query(
-                `SELECT
+                `
+                SELECT
                     id,
                     statement_type,
                     period,
@@ -139,10 +260,12 @@ const statementController = {
                     uploaded_by,
                     created_at,
                     spam
-                 FROM statements
-                 WHERE id = $1`,
+                FROM statements
+                WHERE id = $1
+                `,
                 [statementid]
             );
+
 
             if (result.rows.length === 0) {
 
@@ -152,7 +275,9 @@ const statementController = {
                 });
             }
 
+
             return res.json(result.rows[0]);
+
 
         } catch (err) {
 
@@ -180,11 +305,59 @@ const statementController = {
             file_name,
             transaction_count = 0,
             uploaded_by,
-            spam = false
+            spam = false,
+            user_id
         } = req.body;
 
 
         try {
+
+            // ====================================================
+            // CHECK USER
+            // ====================================================
+
+            const userResult = await db.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                userResult.rows[0].role;
+
+
+            // ====================================================
+            // CREATE PERMISSION
+            //
+            // manager and owner can create
+            // ====================================================
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Only manager or owner can create statements"
+                });
+            }
+
 
             // ====================================================
             // REQUIRED FIELDS
@@ -298,7 +471,8 @@ const statementController = {
             // ====================================================
 
             const result = await db.query(
-                `INSERT INTO statements (
+                `
+                INSERT INTO statements (
                     statement_type,
                     period,
                     source,
@@ -318,7 +492,8 @@ const statementController = {
                     $7,
                     $8
                 )
-                RETURNING *`,
+                RETURNING *
+                `,
                 [
                     statement_type,
                     period,
@@ -336,6 +511,7 @@ const statementController = {
                 success: true,
                 statement: result.rows[0]
             });
+
 
         } catch (err) {
 
@@ -355,7 +531,9 @@ const statementController = {
 
     async updateStatement(req, res) {
 
-        const { statementid } = req.params;
+        const {
+            statementid
+        } = req.params;
 
         const {
             statement_type,
@@ -365,22 +543,73 @@ const statementController = {
             file_name,
             transaction_count,
             uploaded_by,
-            spam
+            spam,
+            user_id
         } = req.body;
 
 
         try {
 
             // ====================================================
+            // CHECK USER
+            // ====================================================
+
+            const userResult = await db.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                userResult.rows[0].role;
+
+
+            // ====================================================
+            // UPDATE PERMISSION
+            //
+            // manager and owner can update
+            // ====================================================
+
+            if (
+                userRole !== "manager" &&
+                userRole !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Only manager or owner can update statements"
+                });
+            }
+
+
+            // ====================================================
             // CHECK EXISTS
             // ====================================================
 
             const existing = await db.query(
-                `SELECT *
-                 FROM statements
-                 WHERE id = $1`,
+                `
+                SELECT *
+                FROM statements
+                WHERE id = $1
+                `,
                 [statementid]
             );
+
 
             if (
                 existing.rows.length === 0
@@ -419,9 +648,7 @@ const statementController = {
 
             if (
                 source !== undefined &&
-                !VALID_SOURCES.includes(
-                    source
-                )
+                !VALID_SOURCES.includes(source)
             ) {
 
                 return res.status(400).json({
@@ -434,7 +661,7 @@ const statementController = {
 
             // ====================================================
             // VALIDATE PERIOD
-            // ============================================================
+            // ====================================================
 
             if (
                 period !== undefined &&
@@ -495,8 +722,9 @@ const statementController = {
             // ====================================================
 
             const result = await db.query(
-                `UPDATE statements
-                 SET
+                `
+                UPDATE statements
+                SET
                     statement_type =
                         COALESCE(
                             $1,
@@ -545,9 +773,10 @@ const statementController = {
                             spam
                         )
 
-                 WHERE id = $9
+                WHERE id = $9
 
-                 RETURNING *`,
+                RETURNING *
+                `,
                 [
                     statement_type ?? null,
                     period ?? null,
@@ -569,6 +798,7 @@ const statementController = {
                 statement: result.rows[0]
             });
 
+
         } catch (err) {
 
             console.error(err);
@@ -587,14 +817,71 @@ const statementController = {
 
     async deleteStatement(req, res) {
 
-        const { statementid } = req.params;
+        const {
+            statementid
+        } = req.params;
+
+        const {
+            user_id
+        } = req.body;
+
 
         try {
 
+            // ====================================================
+            // CHECK USER
+            // ====================================================
+
+            const userResult = await db.query(
+                `
+                SELECT role
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [user_id]
+            );
+
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const userRole =
+                userResult.rows[0].role;
+
+
+            // ====================================================
+            // DELETE PERMISSION
+            //
+            // ONLY OWNER
+            // ====================================================
+
+            if (userRole !== "owner") {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Only owner can permanently delete statements"
+                });
+            }
+
+
+            // ====================================================
+            // DELETE
+            // ====================================================
+
             const result = await db.query(
-                `DELETE FROM statements
-                 WHERE id = $1
-                 RETURNING *`,
+                `
+                DELETE FROM statements
+                WHERE id = $1
+                RETURNING *
+                `,
                 [statementid]
             );
 
@@ -616,6 +903,7 @@ const statementController = {
                 statement: result.rows[0]
             });
 
+
         } catch (err) {
 
             console.error(err);
@@ -626,6 +914,7 @@ const statementController = {
             });
         }
     }
+
 };
 
 

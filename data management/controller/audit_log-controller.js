@@ -1,10 +1,18 @@
-const { dbConnection } = require("../../db_connection")
+const db = require("../../db_connection");
 
-exports.audit_logController = {
+const audit_logController = {
+
+    // ============================================================
+    // GET ALL AUDIT LOGS
+    //
+    // Manager + Owner
+    // Viewer has no access.
+    // ============================================================
+
     async getAudit_logs(req, res) {
-        const db = require("../../db_connection");
 
         const {
+            requester_id,
             search = "",
             user = "",
             action = "",
@@ -13,179 +21,434 @@ exports.audit_logController = {
             dateTo = ""
         } = req.query;
 
-        const conditions = [];
-        const values = [];
+        try {
 
-        // Search
-        if (search) {
-            values.push(`%${search.toLowerCase()}%`);
-            const param = `$${values.length}`;
+            // ====================================================
+            // CHECK REQUESTER
+            // ====================================================
 
-            conditions.push(`
-            (
-                LOWER(a.id::text) LIKE ${param}
-                OR LOWER(a.entity_type) LIKE ${param}
-                OR LOWER(a.action) LIKE ${param}
-                OR LOWER(COALESCE(u.username, '')) LIKE ${param}
-            )
-        `);
-        }
+            if (!requester_id) {
 
-        // User
-        if (user) {
-            values.push(user);
+                return res.status(401).json({
+                    success: false,
+                    error: "Unauthorized: requester_id is required"
+                });
+            }
 
-            conditions.push(
-                `LOWER(a.actor_id::text) = LOWER($${values.length})`
+            const requesterResult = await db.query(
+                `
+                SELECT id, role, is_active
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [requester_id]
             );
-        }
 
-        // Entity type
-        if (entity_type) {
-            values.push(entity_type.toLowerCase());
+            if (requesterResult.rows.length === 0) {
 
-            conditions.push(
-                `LOWER(a.entity_type) = $${values.length}`
-            );
-        }
+                return res.status(401).json({
+                    success: false,
+                    error: "Unauthorized: requester not found"
+                });
+            }
 
-        // Action
-        if (action) {
-            const actionValue = action.toLowerCase();
+            const requester =
+                requesterResult.rows[0];
 
-            if (actionValue === "restore") {
+            if (!requester.is_active) {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Unauthorized: requester account is inactive"
+                });
+            }
+
+            if (
+                requester.role !== "manager" &&
+                requester.role !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
+
+            // ====================================================
+            // FILTERS
+            // ====================================================
+
+            const conditions = [];
+            const values = [];
+
+
+            // ----------------------------------------------------
+            // SEARCH
+            // ----------------------------------------------------
+
+            if (search) {
+
+                values.push(
+                    `%${search.toLowerCase()}%`
+                );
+
+                const param =
+                    `$${values.length}`;
+
                 conditions.push(`
-                LOWER(a.action) = 'restore'
-            `);
+                    (
+                        LOWER(a.id::text) LIKE ${param}
+                        OR LOWER(a.entity_type) LIKE ${param}
+                        OR LOWER(a.action) LIKE ${param}
+                        OR LOWER(
+                            COALESCE(u.username, '')
+                        ) LIKE ${param}
+                    )
+                `);
+            }
 
-            } else if (actionValue === "hard_delete") {
-                conditions.push(`
-                LOWER(a.action) = 'hard_delete'
-            `);
 
-            } else if (actionValue.endsWith("role changed")) {
-                conditions.push(`
-                LOWER(a.entity_type) = 'user'
-                AND LOWER(a.action) = 'update'
-            `);
+            // ----------------------------------------------------
+            // USER
+            // ----------------------------------------------------
 
-            } else {
-                const parts = actionValue.split(" ");
-                const actionWord = parts.pop();
-                const entityName = parts.join(" ");
+            if (user) {
 
-                if (actionWord === "created") {
-                    values.push(entityName);
+                values.push(user);
+
+                conditions.push(
+                    `LOWER(a.actor_id::text) =
+                     LOWER($${values.length})`
+                );
+            }
+
+
+            // ----------------------------------------------------
+            // ENTITY TYPE
+            // ----------------------------------------------------
+
+            if (entity_type) {
+
+                values.push(
+                    entity_type.toLowerCase()
+                );
+
+                conditions.push(
+                    `LOWER(a.entity_type) =
+                     $${values.length}`
+                );
+            }
+
+
+            // ----------------------------------------------------
+            // ACTION
+            // ----------------------------------------------------
+
+            if (action) {
+
+                const actionValue =
+                    action.toLowerCase();
+
+
+                if (actionValue === "restore") {
 
                     conditions.push(`
-                    LOWER(a.entity_type) = $${values.length}
-                    AND LOWER(a.action) = 'create'
-                `);
+                        LOWER(a.action) = 'restore'
+                    `);
 
-                } else if (actionWord === "deleted") {
-                    values.push(entityName);
-
-                    conditions.push(`
-                    LOWER(a.entity_type) = $${values.length}
-                    AND LOWER(a.action) = 'delete'
-                `);
-
-                } else if (actionWord === "updated") {
-                    values.push(entityName);
+                } else if (
+                    actionValue === "hard_delete"
+                ) {
 
                     conditions.push(`
-                    LOWER(a.entity_type) = $${values.length}
-                    AND LOWER(a.action) = 'update'
-                `);
+                        LOWER(a.action) = 'hard_delete'
+                    `);
 
-                } else if (actionWord === "edited") {
-                    values.push(entityName);
+                } else if (
+                    actionValue.endsWith("role changed")
+                ) {
 
                     conditions.push(`
-                    LOWER(a.entity_type) = $${values.length}
-                    AND LOWER(a.action) = 'update'
-                    AND LOWER(a.entity_type) <> 'order'
-                    AND LOWER(a.entity_type) <> 'user'
-                `);
+                        LOWER(a.entity_type) = 'user'
+                        AND LOWER(a.action) = 'update'
+                    `);
 
                 } else {
-                    conditions.push(`FALSE`);
+
+                    const parts =
+                        actionValue.split(" ");
+
+                    const actionWord =
+                        parts.pop();
+
+                    const entityName =
+                        parts.join(" ");
+
+
+                    if (actionWord === "created") {
+
+                        values.push(entityName);
+
+                        conditions.push(`
+                            LOWER(a.entity_type) =
+                                $${values.length}
+                            AND LOWER(a.action) =
+                                'create'
+                        `);
+
+                    } else if (
+                        actionWord === "deleted"
+                    ) {
+
+                        values.push(entityName);
+
+                        conditions.push(`
+                            LOWER(a.entity_type) =
+                                $${values.length}
+                            AND LOWER(a.action) =
+                                'delete'
+                        `);
+
+                    } else if (
+                        actionWord === "updated"
+                    ) {
+
+                        values.push(entityName);
+
+                        conditions.push(`
+                            LOWER(a.entity_type) =
+                                $${values.length}
+                            AND LOWER(a.action) =
+                                'update'
+                        `);
+
+                    } else if (
+                        actionWord === "edited"
+                    ) {
+
+                        values.push(entityName);
+
+                        conditions.push(`
+                            LOWER(a.entity_type) =
+                                $${values.length}
+                            AND LOWER(a.action) =
+                                'update'
+                            AND LOWER(a.entity_type) <> 'order'
+                            AND LOWER(a.entity_type) <> 'user'
+                        `);
+
+                    } else {
+
+                        conditions.push(`FALSE`);
+                    }
                 }
             }
-        }
 
-        // Date from
-        if (dateFrom) {
-            values.push(dateFrom);
-            conditions.push(`a.created_at >= $${values.length}::timestamptz`);
-        }
 
-        if (dateTo) {
-            values.push(dateTo);
-            conditions.push(`a.created_at <= $${values.length}::timestamptz`);
-        }
+            // ----------------------------------------------------
+            // DATE FROM
+            // ----------------------------------------------------
 
-        const whereClause = conditions.length
-            ? `WHERE ${conditions.join(" AND ")}`
-            : "";
+            if (dateFrom) {
 
-        try {
+                values.push(dateFrom);
+
+                conditions.push(
+                    `a.created_at >=
+                     $${values.length}::timestamptz`
+                );
+            }
+
+
+            // ----------------------------------------------------
+            // DATE TO
+            // ----------------------------------------------------
+
+            if (dateTo) {
+
+                values.push(dateTo);
+
+                conditions.push(
+                    `a.created_at <=
+                     $${values.length}::timestamptz`
+                );
+            }
+
+
+            // ====================================================
+            // WHERE
+            // ====================================================
+
+            const whereClause =
+                conditions.length > 0
+                    ? `WHERE ${conditions.join(" AND ")}`
+                    : "";
+
+
+            // ====================================================
+            // GET
+            // ====================================================
+
             const result = await db.query(
                 `
-            SELECT
-                a.*,
-                u.username AS username,
-                u.role AS role
-            FROM audit_logs a
-            LEFT JOIN users u
-                ON a.actor_id = u.id
-            ${whereClause}
-            ORDER BY a.created_at DESC
-            `,
+                SELECT
+                    a.*,
+                    u.username AS username,
+                    u.role AS role
+                FROM audit_logs a
+                LEFT JOIN users u
+                    ON a.actor_id = u.id
+                ${whereClause}
+                ORDER BY a.created_at DESC
+                `,
                 values
             );
 
-            res.json(result.rows);
+            return res.json(result.rows);
 
         } catch (err) {
-            console.error(err);
 
-            res.status(500).json({
+            console.error(
+                "Failed to get audit logs:",
+                err
+            );
+
+            return res.status(500).json({
+                success: false,
                 error: err.message
             });
         }
-    }, async getAudit_log(req, res) {
-        const db = require("../../db_connection");
-        const { auditlogid } = req.params;
+    },
+
+
+    // ============================================================
+    // GET ONE AUDIT LOG
+    //
+    // Manager + Owner
+    // ============================================================
+
+    async getAudit_log(req, res) {
+
+        const {
+            requester_id
+        } = req.query;
+
+        const {
+            auditlogid
+        } = req.params;
 
         try {
+
+            // ====================================================
+            // CHECK REQUESTER
+            // ====================================================
+
+            if (!requester_id) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "Unauthorized: requester_id is required"
+                });
+            }
+
+            const requesterResult = await db.query(
+                `
+                SELECT id, role, is_active
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [requester_id]
+            );
+
+            if (requesterResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "Unauthorized: requester not found"
+                });
+            }
+
+            const requester =
+                requesterResult.rows[0];
+
+            if (!requester.is_active) {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Unauthorized: requester account is inactive"
+                });
+            }
+
+            if (
+                requester.role !== "manager" &&
+                requester.role !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
+
+
+            // ====================================================
+            // GET
+            // ====================================================
+
             const result = await db.query(
-                `SELECT *
-             FROM audit_logs
-             WHERE id = $1`,
+                `
+                SELECT
+                    a.*,
+                    u.username AS username,
+                    u.role AS role
+                FROM audit_logs a
+                LEFT JOIN users u
+                    ON a.actor_id = u.id
+                WHERE a.id = $1
+                `,
                 [auditlogid]
             );
 
-            const auditLog = result.rows[0];
+            const auditLog =
+                result.rows[0];
 
             if (!auditLog) {
+
                 return res.status(404).json({
+                    success: false,
                     error: "Audit log not found"
                 });
             }
 
-            res.json(auditLog);
+            return res.json(auditLog);
+
         } catch (err) {
+
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
+                success: false,
                 error: err.message
             });
         }
-    }, async addAudit_log(req, res) {
-        const db = require("../../db_connection");
+    },
+
+
+    // ============================================================
+    // ADD AUDIT LOG
+    //
+    // Owner only.
+    // ============================================================
+
+    async addAudit_log(req, res) {
 
         const {
+            requester_id,
             actor_id,
             action,
             entity_type,
@@ -196,19 +459,84 @@ exports.audit_logController = {
         } = req.body;
 
         try {
+
+            // ====================================================
+            // CHECK REQUESTER
+            // ====================================================
+
+            if (!requester_id) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "Unauthorized: requester_id is required"
+                });
+            }
+
+            const requesterResult = await db.query(
+                `
+                SELECT id, role, is_active
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [requester_id]
+            );
+
+            if (requesterResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "Unauthorized: requester not found"
+                });
+            }
+
+            const requester =
+                requesterResult.rows[0];
+
+            if (!requester.is_active) {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Unauthorized: requester account is inactive"
+                });
+            }
+
+            if (requester.role !== "owner") {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Forbidden: only owners can create audit logs"
+                });
+            }
+
+
+            // ====================================================
+            // REQUIRED FIELDS
+            // ====================================================
+
+            if (
+                !actor_id ||
+                !action ||
+                !entity_type
+            ) {
+
+                return res.status(400).json({
+                    success: false,
+                    error:
+                        "actor_id, action and entity_type are required"
+                });
+            }
+
+
+            // ====================================================
+            // INSERT
+            // ====================================================
+
             const result = await db.query(
-                `INSERT INTO audit_logs (
-                actor_id,
-                action,
-                entity_type,
-                entity_id,
-                before,
-                after,
-                ip_address
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING *`,
-                [
+                `
+                INSERT INTO audit_logs (
                     actor_id,
                     action,
                     entity_type,
@@ -216,26 +544,56 @@ exports.audit_logController = {
                     before,
                     after,
                     ip_address
+                )
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7
+                )
+                RETURNING *
+                `,
+                [
+                    actor_id,
+                    action,
+                    entity_type,
+                    entity_id ?? null,
+                    before ?? null,
+                    after ?? null,
+                    ip_address ?? null
                 ]
             );
 
-            res.status(201).json({
+            return res.status(201).json({
                 success: true,
                 auditLog: result.rows[0]
             });
+
         } catch (err) {
+
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
                 success: false,
                 error: err.message
             });
         }
-    }, async updateAudit_log(req, res) {
-        const db = require("../../db_connection");
-        const { auditlogid } = req.params;
+    },
+
+
+    // ============================================================
+    // UPDATE AUDIT LOG
+    //
+    // Owner only.
+    // ============================================================
+
+    async updateAudit_log(req, res) {
 
         const {
+            requester_id,
             actor_id,
             action,
             entity_type,
@@ -245,35 +603,99 @@ exports.audit_logController = {
             ip_address
         } = req.body;
 
+        const {
+            auditlogid
+        } = req.params;
+
         try {
+
+            // ====================================================
+            // CHECK REQUESTER
+            // ====================================================
+
+            if (!requester_id) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "Unauthorized: requester_id is required"
+                });
+            }
+
+            const requesterResult = await db.query(
+                `
+                SELECT id, role, is_active
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [requester_id]
+            );
+
+            if (requesterResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "Unauthorized: requester not found"
+                });
+            }
+
+            const requester =
+                requesterResult.rows[0];
+
+            if (!requester.is_active) {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Unauthorized: requester account is inactive"
+                });
+            }
+
+            if (requester.role !== "owner") {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Forbidden: only owners can modify audit logs"
+                });
+            }
+
+
+            // ====================================================
+            // UPDATE
+            // ====================================================
+
             const result = await db.query(
-                `UPDATE audit_logs
-             SET
-                actor_id = $1,
-                action = $2,
-                entity_type = $3,
-                entity_id = $4,
-                before = $5,
-                after = $6,
-                ip_address = $7
-             WHERE id = $8
-             RETURNING *`,
+                `
+                UPDATE audit_logs
+                SET
+                    actor_id = COALESCE($1, actor_id),
+                    action = COALESCE($2, action),
+                    entity_type = COALESCE($3, entity_type),
+                    entity_id = COALESCE($4, entity_id),
+                    before = COALESCE($5, before),
+                    after = COALESCE($6, after),
+                    ip_address = COALESCE($7, ip_address)
+                WHERE id = $8
+                RETURNING *
+                `,
                 [
-                    actor_id,
-                    action,
-                    entity_type,
-                    entity_id,
-                    before,
-                    after,
-                    ip_address,
+                    actor_id ?? null,
+                    action ?? null,
+                    entity_type ?? null,
+                    entity_id ?? null,
+                    before ?? null,
+                    after ?? null,
+                    ip_address ?? null,
                     auditlogid
                 ]
             );
 
             if (result.rows.length === 0) {
+
                 return res.status(404).json({
                     success: false,
-                    message: "Audit log not found"
+                    error: "Audit log not found"
                 });
             }
 
@@ -281,30 +703,107 @@ exports.audit_logController = {
                 success: true,
                 auditLog: result.rows[0]
             });
+
         } catch (err) {
+
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
                 success: false,
                 error: err.message
             });
         }
-    }, async deleteAudit_log(req, res) {
-        const db = require("../../db_connection");
-        const { auditlogid } = req.params;
+    },
+
+
+    // ============================================================
+    // DELETE AUDIT LOG
+    //
+    // Owner only.
+    // ============================================================
+
+    async deleteAudit_log(req, res) {
+
+        const {
+            requester_id
+        } = req.body || {};
+
+        const {
+            auditlogid
+        } = req.params;
 
         try {
+
+            // ====================================================
+            // CHECK REQUESTER
+            // ====================================================
+
+            if (!requester_id) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "Unauthorized: requester_id is required"
+                });
+            }
+
+            const requesterResult = await db.query(
+                `
+                SELECT id, role, is_active
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+                [requester_id]
+            );
+
+            if (requesterResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "Unauthorized: requester not found"
+                });
+            }
+
+            const requester =
+                requesterResult.rows[0];
+
+            if (!requester.is_active) {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Unauthorized: requester account is inactive"
+                });
+            }
+
+            if (requester.role !== "owner") {
+
+                return res.status(403).json({
+                    success: false,
+                    error:
+                        "Forbidden: only owners can delete audit logs"
+                });
+            }
+
+
+            // ====================================================
+            // DELETE
+            // ====================================================
+
             const result = await db.query(
-                `DELETE FROM audit_logs
-             WHERE id = $1
-             RETURNING *`,
+                `
+                DELETE FROM audit_logs
+                WHERE id = $1
+                RETURNING *
+                `,
                 [auditlogid]
             );
 
             if (result.rows.length === 0) {
+
                 return res.status(404).json({
                     success: false,
-                    message: "Audit log not found"
+                    error: "Audit log not found"
                 });
             }
 
@@ -313,13 +812,19 @@ exports.audit_logController = {
                 deletedAuditLog: true,
                 auditLog: result.rows[0]
             });
+
         } catch (err) {
+
             console.error(err);
 
-            res.status(500).json({
+            return res.status(500).json({
                 success: false,
                 error: err.message
             });
         }
     }
-}
+};
+
+module.exports = {
+    audit_logController
+};

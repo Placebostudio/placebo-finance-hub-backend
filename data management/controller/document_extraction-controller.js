@@ -4,11 +4,45 @@ exports.documentExtractionController = {
 
   // ============================================================
   // GET ALL DOCUMENT EXTRACTIONS
+  // Any logged-in user
   // ============================================================
 
   async getDocumentExtractions(req, res) {
 
+    const { user_id } = req.query;
+
     try {
+
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
+      }
+
+      // Verify user exists and is active
+      const userResult = await db.query(
+        `SELECT id, role, is_active
+         FROM users
+         WHERE id = $1`,
+        [user_id]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User is inactive"
+        });
+      }
 
       const result = await db.query(
         `SELECT
@@ -42,13 +76,45 @@ exports.documentExtractionController = {
 
   // ============================================================
   // GET ONE DOCUMENT EXTRACTION
+  // Any logged-in user
   // ============================================================
 
   async getDocumentExtraction(req, res) {
 
     const { documentextractionid } = req.params;
+    const { user_id } = req.query;
 
     try {
+
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
+      }
+
+      const userResult = await db.query(
+        `SELECT id, role, is_active
+         FROM users
+         WHERE id = $1`,
+        [user_id]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User is inactive"
+        });
+      }
 
       const result = await db.query(
         `SELECT
@@ -91,11 +157,17 @@ exports.documentExtractionController = {
 
   // ============================================================
   // CREATE DOCUMENT EXTRACTION
+  //
+  // Allowed:
+  // admin
+  // superadmin
+  // owner
   // ============================================================
 
   async addDocumentExtraction(req, res) {
 
     const {
+      user_id,
       document_id,
       method,
       fields,
@@ -108,6 +180,50 @@ exports.documentExtractionController = {
     } = req.body;
 
     try {
+
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
+      }
+
+      const userResult = await db.query(
+        `SELECT id, role, is_active
+         FROM users
+         WHERE id = $1`,
+        [user_id]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User is inactive"
+        });
+      }
+
+      const allowedRoles = [
+        "admin",
+        "superadmin",
+        "owner"
+      ];
+
+      if (!allowedRoles.includes(user.role)) {
+        return res.status(403).json({
+          success: false,
+          error: "Insufficient permissions"
+        });
+      }
+
 
       if (
         !document_id ||
@@ -205,6 +321,11 @@ exports.documentExtractionController = {
 
   // ============================================================
   // UPDATE DOCUMENT EXTRACTION
+  //
+  // Allowed:
+  // admin
+  // superadmin
+  // owner
   // ============================================================
 
   async updateDocumentExtraction(req, res) {
@@ -212,6 +333,7 @@ exports.documentExtractionController = {
     const { documentextractionid } = req.params;
 
     const {
+      user_id,
       method,
       fields,
       validation_issues,
@@ -223,6 +345,50 @@ exports.documentExtractionController = {
     } = req.body;
 
     try {
+
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
+      }
+
+      const userResult = await db.query(
+        `SELECT id, role, is_active
+         FROM users
+         WHERE id = $1`,
+        [user_id]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User is inactive"
+        });
+      }
+
+      const allowedRoles = [
+        "admin",
+        "superadmin",
+        "owner"
+      ];
+
+      if (!allowedRoles.includes(user.role)) {
+        return res.status(403).json({
+          success: false,
+          error: "Insufficient permissions"
+        });
+      }
+
 
       // ========================================================
       // IF SETTING AS CURRENT,
@@ -319,13 +485,61 @@ exports.documentExtractionController = {
 
   // ============================================================
   // DELETE DOCUMENT EXTRACTION
+  //
+  // Allowed:
+  // superadmin
+  // owner
   // ============================================================
 
   async deleteDocumentExtraction(req, res) {
 
     const { documentextractionid } = req.params;
+    const { user_id } = req.body;
 
     try {
+
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
+      }
+
+      const userResult = await db.query(
+        `SELECT id, role, is_active
+         FROM users
+         WHERE id = $1`,
+        [user_id]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User is inactive"
+        });
+      }
+
+      const allowedRoles = [
+        "superadmin",
+        "owner"
+      ];
+
+      if (!allowedRoles.includes(user.role)) {
+        return res.status(403).json({
+          success: false,
+          error: "Insufficient permissions"
+        });
+      }
+
 
       const result = await db.query(
         `DELETE FROM document_extractions
