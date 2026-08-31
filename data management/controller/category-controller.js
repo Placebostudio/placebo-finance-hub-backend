@@ -1,72 +1,5 @@
 const db = require("../../db_connection");
 
-
-// ============================================================
-// PERMISSION HELPER
-// ============================================================
-
-async function requirePermission(req, res, allowedRoles) {
-
-    const userId =
-        req.body?.user_id ||
-        req.query?.user_id ||
-        req.headers["x-user-id"];
-
-
-    if (!userId) {
-
-        res.status(401).json({
-            success: false,
-            error: "user_id is required"
-        });
-
-        return null;
-    }
-
-
-    const result = await db.query(
-        `
-        SELECT role
-        FROM users
-        WHERE id = $1
-        LIMIT 1
-        `,
-        [userId]
-    );
-
-
-    if (result.rows.length === 0) {
-
-        res.status(401).json({
-            success: false,
-            error: "User not found"
-        });
-
-        return null;
-    }
-
-
-    const role = result.rows[0].role;
-
-
-    if (!allowedRoles.includes(role)) {
-
-        res.status(403).json({
-            success: false,
-            error: "Insufficient permissions"
-        });
-
-        return null;
-    }
-
-
-    return {
-        userId,
-        role
-    };
-}
-
-
 const categoryController = {
 
     // ============================================================
@@ -77,19 +10,54 @@ const categoryController = {
 
         try {
 
-            const permission =
-                await requirePermission(
-                    req,
-                    res,
-                    [
-                        "viewer",
-                        "manager",
-                        "owner"
-                    ]
+            const userId =
+                req.query.user_id ||
+                req.headers["x-user-id"];
+
+            if (!userId) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "user_id is required"
+                });
+            }
+
+
+            const userResult =
+                await db.query(
+                    `
+                    SELECT role
+                    FROM users
+                    WHERE id = $1
+                    LIMIT 1
+                    `,
+                    [userId]
                 );
 
-            if (!permission) {
-                return;
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const role =
+                userResult.rows[0].role;
+
+
+            if (
+                role !== "viewer" &&
+                role !== "manager" &&
+                role !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
             }
 
 
@@ -174,19 +142,54 @@ const categoryController = {
 
         try {
 
-            const permission =
-                await requirePermission(
-                    req,
-                    res,
-                    [
-                        "viewer",
-                        "manager",
-                        "owner"
-                    ]
+            const userId =
+                req.query.user_id ||
+                req.headers["x-user-id"];
+
+            if (!userId) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "user_id is required"
+                });
+            }
+
+
+            const userResult =
+                await db.query(
+                    `
+                    SELECT role
+                    FROM users
+                    WHERE id = $1
+                    LIMIT 1
+                    `,
+                    [userId]
                 );
 
-            if (!permission) {
-                return;
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const role =
+                userResult.rows[0].role;
+
+
+            if (
+                role !== "viewer" &&
+                role !== "manager" &&
+                role !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
             }
 
 
@@ -240,28 +243,60 @@ const categoryController = {
 
         try {
 
-            const permission =
-                await requirePermission(
-                    req,
-                    res,
-                    [
-                        "manager",
-                        "owner"
-                    ]
-                );
-
-            if (!permission) {
-                return;
-            }
-
-
             const {
                 name,
                 is_vat_deductible_default = true,
                 sort_order = 0,
                 is_active = true,
-                spam = false
+                spam = false,
+                user_id
             } = req.body;
+
+
+            if (!user_id) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "user_id is required"
+                });
+            }
+
+
+            const userResult =
+                await db.query(
+                    `
+                    SELECT role
+                    FROM users
+                    WHERE id = $1
+                    LIMIT 1
+                    `,
+                    [user_id]
+                );
+
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const role =
+                userResult.rows[0].role;
+
+
+            if (
+                role !== "manager" &&
+                role !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
 
 
             const result =
@@ -322,28 +357,60 @@ const categoryController = {
 
         try {
 
-            const permission =
-                await requirePermission(
-                    req,
-                    res,
-                    [
-                        "manager",
-                        "owner"
-                    ]
-                );
-
-            if (!permission) {
-                return;
-            }
-
-
             const {
                 name,
                 is_vat_deductible_default,
                 sort_order,
                 is_active,
-                spam
+                spam,
+                user_id
             } = req.body;
+
+
+            if (!user_id) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "user_id is required"
+                });
+            }
+
+
+            const userResult =
+                await db.query(
+                    `
+                    SELECT role
+                    FROM users
+                    WHERE id = $1
+                    LIMIT 1
+                    `,
+                    [user_id]
+                );
+
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const role =
+                userResult.rows[0].role;
+
+
+            if (
+                role !== "manager" &&
+                role !== "owner"
+            ) {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
+            }
 
 
             const result =
@@ -436,17 +503,51 @@ const categoryController = {
 
         try {
 
-            const permission =
-                await requirePermission(
-                    req,
-                    res,
-                    [
-                        "owner"
-                    ]
+            const {
+                user_id
+            } = req.body;
+
+
+            if (!user_id) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "user_id is required"
+                });
+            }
+
+
+            const userResult =
+                await db.query(
+                    `
+                    SELECT role
+                    FROM users
+                    WHERE id = $1
+                    LIMIT 1
+                    `,
+                    [user_id]
                 );
 
-            if (!permission) {
-                return;
+
+            if (userResult.rows.length === 0) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            const role =
+                userResult.rows[0].role;
+
+
+            if (role !== "owner") {
+
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
             }
 
 

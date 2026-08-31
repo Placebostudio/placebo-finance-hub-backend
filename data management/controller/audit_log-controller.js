@@ -12,7 +12,7 @@ const audit_logController = {
     async getAudit_logs(req, res) {
 
         const {
-            requester_id,
+            user_id,
             search = "",
             user = "",
             action = "",
@@ -27,11 +27,11 @@ const audit_logController = {
             // CHECK REQUESTER
             // ====================================================
 
-            if (!requester_id) {
+            if (!user_id) {
 
                 return res.status(401).json({
                     success: false,
-                    error: "Unauthorized: requester_id is required"
+                    error: "Unauthorized: user_id is required"
                 });
             }
 
@@ -42,7 +42,7 @@ const audit_logController = {
                 WHERE id = $1
                 LIMIT 1
                 `,
-                [requester_id]
+                [user_id]
             );
 
             if (requesterResult.rows.length === 0) {
@@ -333,7 +333,7 @@ const audit_logController = {
     async getAudit_log(req, res) {
 
         const {
-            requester_id
+            user_id
         } = req.query;
 
         const {
@@ -346,11 +346,11 @@ const audit_logController = {
             // CHECK REQUESTER
             // ====================================================
 
-            if (!requester_id) {
+            if (!user_id) {
 
                 return res.status(401).json({
                     success: false,
-                    error: "Unauthorized: requester_id is required"
+                    error: "Unauthorized: user_id is required"
                 });
             }
 
@@ -361,7 +361,7 @@ const audit_logController = {
                 WHERE id = $1
                 LIMIT 1
                 `,
-                [requester_id]
+                [user_id]
             );
 
             if (requesterResult.rows.length === 0) {
@@ -448,7 +448,7 @@ const audit_logController = {
     async addAudit_log(req, res) {
 
         const {
-            requester_id,
+            user_id,
             actor_id,
             action,
             entity_type,
@@ -464,11 +464,11 @@ const audit_logController = {
             // CHECK REQUESTER
             // ====================================================
 
-            if (!requester_id) {
+            if (!user_id) {
 
                 return res.status(401).json({
                     success: false,
-                    error: "Unauthorized: requester_id is required"
+                    error: "Unauthorized: user_id is required"
                 });
             }
 
@@ -479,7 +479,7 @@ const audit_logController = {
                 WHERE id = $1
                 LIMIT 1
                 `,
-                [requester_id]
+                [user_id]
             );
 
             if (requesterResult.rows.length === 0) {
@@ -593,7 +593,7 @@ const audit_logController = {
     async updateAudit_log(req, res) {
 
         const {
-            requester_id,
+            user_id,
             actor_id,
             action,
             entity_type,
@@ -613,11 +613,11 @@ const audit_logController = {
             // CHECK REQUESTER
             // ====================================================
 
-            if (!requester_id) {
+            if (!user_id) {
 
                 return res.status(401).json({
                     success: false,
-                    error: "Unauthorized: requester_id is required"
+                    error: "Unauthorized: user_id is required"
                 });
             }
 
@@ -628,7 +628,7 @@ const audit_logController = {
                 WHERE id = $1
                 LIMIT 1
                 `,
-                [requester_id]
+                [user_id]
             );
 
             if (requesterResult.rows.length === 0) {
@@ -725,7 +725,7 @@ const audit_logController = {
     async deleteAudit_log(req, res) {
 
         const {
-            requester_id
+            user_id
         } = req.body || {};
 
         const {
@@ -738,11 +738,11 @@ const audit_logController = {
             // CHECK REQUESTER
             // ====================================================
 
-            if (!requester_id) {
+            if (!user_id) {
 
                 return res.status(401).json({
                     success: false,
-                    error: "Unauthorized: requester_id is required"
+                    error: "Unauthorized: user_id is required"
                 });
             }
 
@@ -753,7 +753,7 @@ const audit_logController = {
                 WHERE id = $1
                 LIMIT 1
                 `,
-                [requester_id]
+                [user_id]
             );
 
             if (requesterResult.rows.length === 0) {

@@ -13,6 +13,44 @@ const VALID_STATUSES = [
 ];
 
 
+// ============================================================
+// GET USER ROLE
+// ============================================================
+
+async function getUserRole(userId) {
+
+    if (!userId) {
+        return null;
+    }
+
+    const result = await db.query(
+        `
+        SELECT role
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [userId]
+    );
+
+    if (result.rows.length === 0) {
+        return null;
+    }
+
+    return result.rows[0].role;
+}
+
+
+// ============================================================
+// CHECK ROLE
+// ============================================================
+
+function hasRole(userRole, allowedRoles) {
+
+    return allowedRoles.includes(userRole);
+}
+
+
 const matchController = {
 
     // ============================================================
@@ -23,33 +61,57 @@ const matchController = {
 
         try {
 
-            const permission =
-                await requirePermission(
-                    req,
-                    res,
+            const {
+                status,
+                spam,
+                user_id
+            } = req.query;
+
+
+            // ====================================================
+            // CHECK USER
+            // ====================================================
+
+            const userRole =
+                await getUserRole(user_id);
+
+
+            if (!userRole) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            // ====================================================
+            // VIEWER / MANAGER / OWNER CAN VIEW
+            // ====================================================
+
+            if (
+                !hasRole(
+                    userRole,
                     [
                         "viewer",
                         "manager",
                         "owner"
                     ]
-                );
+                )
+            ) {
 
-            if (!permission) {
-                return;
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
             }
 
 
-            const {
-                status,
-                spam
-            } = req.query;
-
-
             let query = `
-            SELECT *
-            FROM matches
-            WHERE 1 = 1
-        `;
+                SELECT *
+                FROM matches
+                WHERE 1 = 1
+            `;
 
             const params = [];
 
@@ -59,8 +121,8 @@ const matchController = {
                 params.push(status);
 
                 query += `
-                AND status = $${params.length}
-            `;
+                    AND status = $${params.length}
+                `;
             }
 
 
@@ -71,14 +133,14 @@ const matchController = {
                 );
 
                 query += `
-                AND spam = $${params.length}
-            `;
+                    AND spam = $${params.length}
+                `;
             }
 
 
             query += `
-            ORDER BY created_at DESC
-        `;
+                ORDER BY created_at DESC
+            `;
 
 
             const result =
@@ -110,33 +172,63 @@ const matchController = {
 
     async getMatch(req, res) {
 
-        const { matchid } = req.params;
+        const {
+            matchid
+        } = req.params;
+
+        const {
+            user_id
+        } = req.query;
+
 
         try {
 
-            const permission =
-                await requirePermission(
-                    req,
-                    res,
+            // ====================================================
+            // CHECK USER
+            // ====================================================
+
+            const userRole =
+                await getUserRole(user_id);
+
+
+            if (!userRole) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            // ====================================================
+            // VIEWER / MANAGER / OWNER CAN VIEW
+            // ====================================================
+
+            if (
+                !hasRole(
+                    userRole,
                     [
                         "viewer",
                         "manager",
                         "owner"
                     ]
-                );
+                )
+            ) {
 
-            if (!permission) {
-                return;
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
             }
 
 
             const result =
                 await db.query(
                     `
-                SELECT *
-                FROM matches
-                WHERE id = $1
-                `,
+                    SELECT *
+                    FROM matches
+                    WHERE id = $1
+                    `,
                     [matchid]
                 );
 
@@ -172,34 +264,64 @@ const matchController = {
 
     async getMatchesByExpense(req, res) {
 
-        const { expenseid } = req.params;
+        const {
+            expenseid
+        } = req.params;
+
+        const {
+            user_id
+        } = req.query;
+
 
         try {
 
-            const permission =
-                await requirePermission(
-                    req,
-                    res,
+            // ====================================================
+            // CHECK USER
+            // ====================================================
+
+            const userRole =
+                await getUserRole(user_id);
+
+
+            if (!userRole) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            // ====================================================
+            // VIEWER / MANAGER / OWNER CAN VIEW
+            // ====================================================
+
+            if (
+                !hasRole(
+                    userRole,
                     [
                         "viewer",
                         "manager",
                         "owner"
                     ]
-                );
+                )
+            ) {
 
-            if (!permission) {
-                return;
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
             }
 
 
             const result =
                 await db.query(
                     `
-                SELECT *
-                FROM matches
-                WHERE expense_id = $1
-                ORDER BY created_at DESC
-                `,
+                    SELECT *
+                    FROM matches
+                    WHERE expense_id = $1
+                    ORDER BY created_at DESC
+                    `,
                     [expenseid]
                 );
 
@@ -226,34 +348,64 @@ const matchController = {
 
     async getMatchesByTransaction(req, res) {
 
-        const { transactionid } = req.params;
+        const {
+            transactionid
+        } = req.params;
+
+        const {
+            user_id
+        } = req.query;
+
 
         try {
 
-            const permission =
-                await requirePermission(
-                    req,
-                    res,
+            // ====================================================
+            // CHECK USER
+            // ====================================================
+
+            const userRole =
+                await getUserRole(user_id);
+
+
+            if (!userRole) {
+
+                return res.status(401).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+
+            // ====================================================
+            // VIEWER / MANAGER / OWNER CAN VIEW
+            // ====================================================
+
+            if (
+                !hasRole(
+                    userRole,
                     [
                         "viewer",
                         "manager",
                         "owner"
                     ]
-                );
+                )
+            ) {
 
-            if (!permission) {
-                return;
+                return res.status(403).json({
+                    success: false,
+                    error: "Insufficient permissions"
+                });
             }
 
 
             const result =
                 await db.query(
                     `
-                SELECT *
-                FROM matches
-                WHERE transaction_id = $1
-                ORDER BY created_at DESC
-                `,
+                    SELECT *
+                    FROM matches
+                    WHERE transaction_id = $1
+                    ORDER BY created_at DESC
+                    `,
                     [transactionid]
                 );
 
@@ -297,21 +449,14 @@ const matchController = {
         try {
 
             // ====================================================
-            // CHECK USER + PERMISSION
+            // CHECK USER ROLE
             // ====================================================
 
-            const permissionResult = await db.query(
-                `
-            SELECT role
-            FROM users
-            WHERE id = $1
-            LIMIT 1
-            `,
-                [user_id]
-            );
+            const userRole =
+                await getUserRole(user_id);
 
 
-            if (permissionResult.rows.length === 0) {
+            if (!userRole) {
 
                 return res.status(401).json({
                     success: false,
@@ -320,13 +465,18 @@ const matchController = {
             }
 
 
-            const userRole =
-                permissionResult.rows[0].role;
-
+            // ====================================================
+            // MANAGER / OWNER CAN CREATE
+            // ====================================================
 
             if (
-                userRole !== "manager" &&
-                userRole !== "owner"
+                !hasRole(
+                    userRole,
+                    [
+                        "manager",
+                        "owner"
+                    ]
+                )
             ) {
 
                 return res.status(403).json({
@@ -363,7 +513,9 @@ const matchController = {
             // VALIDATE SPAM
             // ====================================================
 
-            if (typeof spam !== "boolean") {
+            if (
+                typeof spam !== "boolean"
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -376,7 +528,9 @@ const matchController = {
             // VALIDATE AMOUNT
             // ====================================================
 
-            if (Number(allocated_amount) <= 0) {
+            if (
+                Number(allocated_amount) <= 0
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -388,7 +542,7 @@ const matchController = {
 
             // ====================================================
             // VALIDATE SCORE
-            // ====================================================
+            // ============================================================
 
             if (
                 score !== undefined &&
@@ -396,7 +550,9 @@ const matchController = {
                 (
                     Number(score) < 0 ||
                     Number(score) > 100 ||
-                    !Number.isInteger(Number(score))
+                    !Number.isInteger(
+                        Number(score)
+                    )
                 )
             ) {
 
@@ -410,9 +566,13 @@ const matchController = {
 
             // ====================================================
             // VALIDATE MATCH TYPE
-            // ====================================================
+            // ============================================================
 
-            if (!VALID_MATCH_TYPES.includes(match_type)) {
+            if (
+                !VALID_MATCH_TYPES.includes(
+                    match_type
+                )
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -425,9 +585,13 @@ const matchController = {
 
             // ====================================================
             // VALIDATE STATUS
-            // ====================================================
+            // ============================================================
 
-            if (!VALID_STATUSES.includes(status)) {
+            if (
+                !VALID_STATUSES.includes(
+                    status
+                )
+            ) {
 
                 return res.status(400).json({
                     success: false,
@@ -442,19 +606,24 @@ const matchController = {
             // CHECK EXPENSE
             // ====================================================
 
-            const expenseResult = await db.query(
-                `SELECT
-                id,
-                gross_amount_sek,
-                coverage_state
-             FROM expenses
-             WHERE id = $1
-             FOR UPDATE`,
-                [expense_id]
-            );
+            const expenseResult =
+                await db.query(
+                    `
+                    SELECT
+                        id,
+                        gross_amount_sek,
+                        coverage_state
+                    FROM expenses
+                    WHERE id = $1
+                    FOR UPDATE
+                    `,
+                    [expense_id]
+                );
 
 
-            if (expenseResult.rows.length === 0) {
+            if (
+                expenseResult.rows.length === 0
+            ) {
 
                 return res.status(404).json({
                     success: false,
@@ -471,19 +640,24 @@ const matchController = {
             // CHECK TRANSACTION
             // ====================================================
 
-            const transactionResult = await db.query(
-                `SELECT
-                id,
-                billed_amount,
-                coverage_state
-             FROM transactions
-             WHERE id = $1
-             FOR UPDATE`,
-                [transaction_id]
-            );
+            const transactionResult =
+                await db.query(
+                    `
+                    SELECT
+                        id,
+                        billed_amount,
+                        coverage_state
+                    FROM transactions
+                    WHERE id = $1
+                    FOR UPDATE
+                    `,
+                    [transaction_id]
+                );
 
 
-            if (transactionResult.rows.length === 0) {
+            if (
+                transactionResult.rows.length === 0
+            ) {
 
                 return res.status(404).json({
                     success: false,
@@ -500,20 +674,27 @@ const matchController = {
             // CHECK PAIR ALREADY EXISTS
             // ====================================================
 
-            const existingPair = await db.query(
-                `SELECT id, status
-             FROM matches
-             WHERE expense_id = $1
-             AND transaction_id = $2
-             LIMIT 1`,
-                [
-                    expense_id,
-                    transaction_id
-                ]
-            );
+            const existingPair =
+                await db.query(
+                    `
+                    SELECT
+                        id,
+                        status
+                    FROM matches
+                    WHERE expense_id = $1
+                    AND transaction_id = $2
+                    LIMIT 1
+                    `,
+                    [
+                        expense_id,
+                        transaction_id
+                    ]
+                );
 
 
-            if (existingPair.rows.length > 0) {
+            if (
+                existingPair.rows.length > 0
+            ) {
 
                 return res.status(409).json({
                     success: false,
@@ -529,27 +710,29 @@ const matchController = {
             // CHECK EXPENSE ALLOCATION
             // ====================================================
 
-            const expenseAllocation = await db.query(
-                `SELECT
-                COALESCE(
-                    SUM(allocated_amount),
-                    0
-                ) AS allocated
-             FROM matches
-             WHERE expense_id = $1
-             AND status = 'confirmed'`,
-                [expense_id]
-            );
+            const expenseAllocation =
+                await db.query(
+                    `
+                    SELECT
+                        COALESCE(
+                            SUM(allocated_amount),
+                            0
+                        ) AS allocated
+                    FROM matches
+                    WHERE expense_id = $1
+                    AND status = 'confirmed'
+                    `,
+                    [expense_id]
+                );
 
 
             const currentExpenseAllocation =
                 Number(
-                    expenseAllocation.rows[0].allocated
+                    expenseAllocation
+                        .rows[0]
+                        .allocated
                 );
 
-
-            // gross_amount_sek is the actual expense amount.
-            // paid_amount / paid_amount_sek are ignored.
 
             const expenseLimit =
                 Number(
@@ -582,22 +765,27 @@ const matchController = {
             // CHECK TRANSACTION ALLOCATION
             // ====================================================
 
-            const transactionAllocation = await db.query(
-                `SELECT
-                COALESCE(
-                    SUM(allocated_amount),
-                    0
-                ) AS allocated
-             FROM matches
-             WHERE transaction_id = $1
-             AND status = 'confirmed'`,
-                [transaction_id]
-            );
+            const transactionAllocation =
+                await db.query(
+                    `
+                    SELECT
+                        COALESCE(
+                            SUM(allocated_amount),
+                            0
+                        ) AS allocated
+                    FROM matches
+                    WHERE transaction_id = $1
+                    AND status = 'confirmed'
+                    `,
+                    [transaction_id]
+                );
 
 
             const currentTransactionAllocation =
                 Number(
-                    transactionAllocation.rows[0].allocated
+                    transactionAllocation
+                        .rows[0]
+                        .allocated
                 );
 
 
@@ -634,48 +822,51 @@ const matchController = {
             // INSERT
             // ====================================================
 
-            const result = await db.query(
-                `INSERT INTO matches (
-                expense_id,
-                transaction_id,
-                allocated_amount,
-                score,
-                match_type,
-                reasons,
-                status,
-                confirmed_by,
-                confirmed_at,
-                spam
-            )
-            VALUES (
-                $1,
-                $2,
-                $3,
-                $4,
-                $5,
-                $6,
-                $7,
-                $8,
-                CASE
-                    WHEN $7 = 'confirmed'
-                    THEN NOW()
-                    ELSE NULL
-                END,
-                $9
-            )
-            RETURNING *`,
-                [
-                    expense_id,
-                    transaction_id,
-                    allocated_amount,
-                    score ?? null,
-                    match_type,
-                    JSON.stringify(reasons),
-                    status,
-                    confirmed_by || null,
-                    spam
-                ]
-            );
+            const result =
+                await db.query(
+                    `
+                    INSERT INTO matches (
+                        expense_id,
+                        transaction_id,
+                        allocated_amount,
+                        score,
+                        match_type,
+                        reasons,
+                        status,
+                        confirmed_by,
+                        confirmed_at,
+                        spam
+                    )
+                    VALUES (
+                        $1,
+                        $2,
+                        $3,
+                        $4,
+                        $5,
+                        $6,
+                        $7,
+                        $8,
+                        CASE
+                            WHEN $7 = 'confirmed'
+                            THEN NOW()
+                            ELSE NULL
+                        END,
+                        $9
+                    )
+                    RETURNING *
+                    `,
+                    [
+                        expense_id,
+                        transaction_id,
+                        allocated_amount,
+                        score ?? null,
+                        match_type,
+                        JSON.stringify(reasons),
+                        status,
+                        confirmed_by || null,
+                        spam
+                    ]
+                );
 
 
             return res.status(201).json({
@@ -698,16 +889,13 @@ const matchController = {
 
     // ============================================================
     // UPDATE MATCH
-    //
-    // Can update:
-    // - all normal fields
-    // - only spam
-    // - normal fields + spam
     // ============================================================
 
     async updateMatch(req, res) {
 
-        const { matchid } = req.params;
+        const {
+            matchid
+        } = req.params;
 
         const {
             allocated_amount,
@@ -724,21 +912,14 @@ const matchController = {
         try {
 
             // ====================================================
-            // CHECK USER + PERMISSION
+            // CHECK USER ROLE
             // ====================================================
 
-            const permissionResult = await db.query(
-                `
-            SELECT role
-            FROM users
-            WHERE id = $1
-            LIMIT 1
-            `,
-                [user_id]
-            );
+            const userRole =
+                await getUserRole(user_id);
 
 
-            if (permissionResult.rows.length === 0) {
+            if (!userRole) {
 
                 return res.status(401).json({
                     success: false,
@@ -747,13 +928,18 @@ const matchController = {
             }
 
 
-            const userRole =
-                permissionResult.rows[0].role;
-
+            // ====================================================
+            // MANAGER / OWNER CAN UPDATE
+            // ====================================================
 
             if (
-                userRole !== "manager" &&
-                userRole !== "owner"
+                !hasRole(
+                    userRole,
+                    [
+                        "manager",
+                        "owner"
+                    ]
+                )
             ) {
 
                 return res.status(403).json({
@@ -767,15 +953,20 @@ const matchController = {
             // CHECK MATCH EXISTS
             // ====================================================
 
-            const existing = await db.query(
-                `SELECT *
-             FROM matches
-             WHERE id = $1`,
-                [matchid]
-            );
+            const existing =
+                await db.query(
+                    `
+                    SELECT *
+                    FROM matches
+                    WHERE id = $1
+                    `,
+                    [matchid]
+                );
 
 
-            if (existing.rows.length === 0) {
+            if (
+                existing.rows.length === 0
+            ) {
 
                 return res.status(404).json({
                     success: false,
@@ -802,11 +993,13 @@ const matchController = {
 
             // ====================================================
             // VALIDATE MATCH TYPE
-            // ====================================================
+            // ============================================================
 
             if (
                 match_type !== undefined &&
-                !VALID_MATCH_TYPES.includes(match_type)
+                !VALID_MATCH_TYPES.includes(
+                    match_type
+                )
             ) {
 
                 return res.status(400).json({
@@ -818,11 +1011,13 @@ const matchController = {
 
             // ====================================================
             // VALIDATE STATUS
-            // ====================================================
+            // ============================================================
 
             if (
                 status !== undefined &&
-                !VALID_STATUSES.includes(status)
+                !VALID_STATUSES.includes(
+                    status
+                )
             ) {
 
                 return res.status(400).json({
@@ -834,7 +1029,7 @@ const matchController = {
 
             // ====================================================
             // VALIDATE SCORE
-            // ====================================================
+            // ============================================================
 
             if (
                 score !== undefined &&
@@ -842,7 +1037,9 @@ const matchController = {
                 (
                     Number(score) < 0 ||
                     Number(score) > 100 ||
-                    !Number.isInteger(Number(score))
+                    !Number.isInteger(
+                        Number(score)
+                    )
                 )
             ) {
 
@@ -875,61 +1072,85 @@ const matchController = {
             // UPDATE
             // ====================================================
 
-            const result = await db.query(
-                `UPDATE matches
-             SET
-                allocated_amount =
-                    COALESCE($1, allocated_amount),
+            const result =
+                await db.query(
+                    `
+                    UPDATE matches
+                    SET
+                        allocated_amount =
+                            COALESCE(
+                                $1,
+                                allocated_amount
+                            ),
 
-                score =
-                    COALESCE($2, score),
+                        score =
+                            COALESCE(
+                                $2,
+                                score
+                            ),
 
-                match_type =
-                    COALESCE($3, match_type),
+                        match_type =
+                            COALESCE(
+                                $3,
+                                match_type
+                            ),
 
-                reasons =
-                    COALESCE($4, reasons),
+                        reasons =
+                            COALESCE(
+                                $4,
+                                reasons
+                            ),
 
-                status =
-                    COALESCE($5, status),
+                        status =
+                            COALESCE(
+                                $5,
+                                status
+                            ),
 
-                confirmed_by =
-                    COALESCE($6, confirmed_by),
+                        confirmed_by =
+                            COALESCE(
+                                $6,
+                                confirmed_by
+                            ),
 
-                confirmed_at =
-                    CASE
-                        WHEN $5 = 'confirmed'
-                        THEN COALESCE(
-                            confirmed_at,
-                            NOW()
-                        )
-                        ELSE confirmed_at
-                    END,
+                        confirmed_at =
+                            CASE
+                                WHEN $5 = 'confirmed'
+                                THEN COALESCE(
+                                    confirmed_at,
+                                    NOW()
+                                )
+                                ELSE confirmed_at
+                            END,
 
-                revalidated_at =
-                    NOW(),
+                        revalidated_at =
+                            NOW(),
 
-                spam =
-                    COALESCE($7, spam)
+                        spam =
+                            COALESCE(
+                                $7,
+                                spam
+                            )
 
-             WHERE id = $8
+                    WHERE id = $8
 
-             RETURNING *`,
-                [
-                    allocated_amount ?? null,
-                    score ?? null,
-                    match_type ?? null,
-                    reasons !== undefined
-                        ? JSON.stringify(reasons)
-                        : null,
-                    status ?? null,
-                    confirmed_by ?? null,
-                    spam !== undefined
-                        ? spam
-                        : null,
-                    matchid
-                ]
-            );
+                    RETURNING *
+                    `,
+                    [
+                        allocated_amount ?? null,
+                        score ?? null,
+                        match_type ?? null,
+                        reasons !== undefined
+                            ? JSON.stringify(reasons)
+                            : null,
+                        status ?? null,
+                        confirmed_by ?? null,
+                        spam !== undefined
+                            ? spam
+                            : null,
+                        matchid
+                    ]
+                );
 
 
             return res.json({
@@ -956,7 +1177,9 @@ const matchController = {
 
     async deleteMatch(req, res) {
 
-        const { matchid } = req.params;
+        const {
+            matchid
+        } = req.params;
 
         const {
             user_id
@@ -966,21 +1189,14 @@ const matchController = {
         try {
 
             // ====================================================
-            // CHECK USER + PERMISSION
+            // CHECK USER ROLE
             // ====================================================
 
-            const permissionResult = await db.query(
-                `
-            SELECT role
-            FROM users
-            WHERE id = $1
-            LIMIT 1
-            `,
-                [user_id]
-            );
+            const userRole =
+                await getUserRole(user_id);
 
 
-            if (permissionResult.rows.length === 0) {
+            if (!userRole) {
 
                 return res.status(401).json({
                     success: false,
@@ -989,19 +1205,18 @@ const matchController = {
             }
 
 
-            const userRole =
-                permissionResult.rows[0].role;
-
-
             // ====================================================
-            // ONLY OWNER CAN DELETE
+            // ONLY OWNER CAN PERMANENTLY DELETE
             // ====================================================
 
-            if (userRole !== "owner") {
+            if (
+                userRole !== "owner"
+            ) {
 
                 return res.status(403).json({
                     success: false,
-                    error: "Only owner can permanently delete matches"
+                    error:
+                        "Only owner can permanently delete matches"
                 });
             }
 
@@ -1010,15 +1225,20 @@ const matchController = {
             // DELETE
             // ====================================================
 
-            const result = await db.query(
-                `DELETE FROM matches
-             WHERE id = $1
-             RETURNING *`,
-                [matchid]
-            );
+            const result =
+                await db.query(
+                    `
+                    DELETE FROM matches
+                    WHERE id = $1
+                    RETURNING *
+                    `,
+                    [matchid]
+                );
 
 
-            if (result.rows.length === 0) {
+            if (
+                result.rows.length === 0
+            ) {
 
                 return res.status(404).json({
                     success: false,
@@ -1042,7 +1262,7 @@ const matchController = {
                 error: err.message
             });
         }
-    },
+    }
 };
 
 

@@ -27,126 +27,73 @@ const VALID_EXTRACTION_METHODS = [
   "manual"
 ];
 
-
-// ============================================================
-// USER PERMISSION
-// ============================================================
-//
-// viewer  -> GET only
-// manager -> GET + create + update + soft delete + restore
-// owner   -> everything, including permanent delete
-//
-// ============================================================
-
-async function getUserRole(userId) {
-
-  if (!userId) {
-    return null;
-  }
-
-  const result = await db.query(
-    `
-    SELECT
-      id,
-      role
-    FROM users
-    WHERE id = $1
-    LIMIT 1
-    `,
-    [userId]
-  );
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return result.rows[0].role;
-}
-
-
-async function requirePermission(req, res, allowedRoles) {
-
-  const userId =
-    req.body?.user_id ??
-    req.query?.user_id ??
-    req.params?.user_id;
-
-  if (!userId) {
-
-    res.status(401).json({
-      success: false,
-      error: "user_id is required"
-    });
-
-    return null;
-  }
-
-  const role = await getUserRole(userId);
-
-  if (!role) {
-
-    res.status(401).json({
-      success: false,
-      error: "User not found"
-    });
-
-    return null;
-  }
-
-  if (!allowedRoles.includes(role)) {
-
-    res.status(403).json({
-      success: false,
-      error: "You do not have permission to perform this action"
-    });
-
-    return null;
-  }
-
-  return {
-    id: userId,
-    role
-  };
-}
-
-
 exports.documentController = {
 
   // ============================================================
   // GET ALL DOCUMENTS
+  // GET /
   // ============================================================
 
   async getDocuments(req, res) {
 
     try {
 
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "viewer",
-          "manager",
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
-      }
-
-
       const {
         status,
-        spam
+        spam,
+        user_id
       } = req.query;
 
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
+      }
+
+      const userResult = await db.query(
+        `
+        SELECT
+          id,
+          role,
+          is_active
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [user_id]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (
+        !["viewer", "manager", "owner"].includes(user.role)
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "You do not have permission to perform this action"
+        });
+      }
 
       const values = [];
 
       const conditions = [
         "deleted_at IS NULL"
       ];
-
 
       if (status) {
 
@@ -157,8 +104,10 @@ exports.documentController = {
         );
       }
 
-
-      if (spam === "true" || spam === "false") {
+      if (
+        spam === "true" ||
+        spam === "false"
+      ) {
 
         values.push(
           spam === "true"
@@ -168,7 +117,6 @@ exports.documentController = {
           `spam = $${values.length}`
         );
       }
-
 
       const result = await db.query(
         `
@@ -196,7 +144,6 @@ exports.documentController = {
         values
       );
 
-
       return res.json(result.rows);
 
     } catch (err) {
@@ -213,28 +160,60 @@ exports.documentController = {
 
   // ============================================================
   // GET ONE DOCUMENT
+  // GET /:documentid
   // ============================================================
 
   async getDocument(req, res) {
 
     const { documentid } = req.params;
+    const { user_id } = req.query;
 
     try {
 
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "viewer",
-          "manager",
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
       }
 
+      const userResult = await db.query(
+        `
+        SELECT
+          id,
+          role,
+          is_active
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [user_id]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (
+        !["viewer", "manager", "owner"].includes(user.role)
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "You do not have permission to perform this action"
+        });
+      }
 
       const result = await db.query(
         `
@@ -262,18 +241,14 @@ exports.documentController = {
         [documentid]
       );
 
-
       if (result.rows.length === 0) {
-
         return res.status(404).json({
           success: false,
           error: "Document not found"
         });
       }
 
-
       const document = result.rows[0];
-
 
       const {
         data,
@@ -285,11 +260,9 @@ exports.documentController = {
           60 * 10
         );
 
-
       if (error) {
         throw error;
       }
-
 
       return res.json({
         ...document,
@@ -310,6 +283,7 @@ exports.documentController = {
 
   // ============================================================
   // UPLOAD DOCUMENT
+  // POST /
   // ============================================================
 
   async uploadDocument(req, res) {
@@ -318,77 +292,81 @@ exports.documentController = {
 
     try {
 
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "manager",
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
-      }
-
-
       const {
-        notes
+        notes,
+        user_id
       } = req.body;
 
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
+      }
 
-      // ----------------------------------------------------
-      // FILE
-      // ----------------------------------------------------
+      const userResult = await db.query(
+        `
+        SELECT
+          id,
+          role,
+          is_active
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [user_id]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (
+        !["manager", "owner"].includes(user.role)
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "You do not have permission to perform this action"
+        });
+      }
 
       if (!req.file) {
-
         return res.status(400).json({
           success: false,
           error: "File is required"
         });
       }
 
-
-      // ----------------------------------------------------
-      // TYPE
-      // ----------------------------------------------------
-
       if (!ALLOWED_TYPES.includes(req.file.mimetype)) {
-
         return res.status(400).json({
           success: false,
           error: "Unsupported file type"
         });
       }
 
-
-      // ----------------------------------------------------
-      // SIZE
-      // ----------------------------------------------------
-
       if (req.file.size > MAX_FILE_SIZE) {
-
         return res.status(400).json({
           success: false,
           error: "File cannot exceed 20 MB"
         });
       }
 
-
-      // ----------------------------------------------------
-      // CHECKSUM
-      // ----------------------------------------------------
-
       const checksum = crypto
         .createHash("sha256")
         .update(req.file.buffer)
         .digest("hex");
-
-
-      // ----------------------------------------------------
-      // DUPLICATE CHECK
-      // ----------------------------------------------------
 
       const duplicate = await db.query(
         `
@@ -405,9 +383,7 @@ exports.documentController = {
         [checksum]
       );
 
-
       if (duplicate.rows.length > 0) {
-
         return res.status(409).json({
           success: false,
           error: "Duplicate document",
@@ -415,17 +391,7 @@ exports.documentController = {
         });
       }
 
-
-      // ----------------------------------------------------
-      // DOCUMENT ID
-      // ----------------------------------------------------
-
       const documentId = crypto.randomUUID();
-
-
-      // ----------------------------------------------------
-      // STORAGE PATH
-      // ----------------------------------------------------
 
       const safeFileName =
         req.file.originalname.replace(
@@ -433,18 +399,11 @@ exports.documentController = {
           "_"
         );
 
-
       const fileName =
         `${Date.now()}-${safeFileName}`;
 
-
       storagePath =
         `${STORAGE_FOLDER}/${documentId}/${fileName}`;
-
-
-      // ----------------------------------------------------
-      // UPLOAD
-      // ----------------------------------------------------
 
       const {
         error: uploadError
@@ -459,15 +418,9 @@ exports.documentController = {
           }
         );
 
-
       if (uploadError) {
         throw uploadError;
       }
-
-
-      // ----------------------------------------------------
-      // CREATE DB ROW
-      // ----------------------------------------------------
 
       let result;
 
@@ -532,36 +485,25 @@ exports.documentController = {
             "pending_review",
             "uploaded",
             notes ?? null,
-            user.id,
+            user_id,
             false
           ]
         );
 
       } catch (dbError) {
 
-        try {
-
-          await supabase.storage
-            .from(BUCKET_NAME)
-            .remove([
-              storagePath
-            ]);
-
-        } catch (cleanupError) {
-
-          console.error(
-            "Failed to clean up uploaded file:",
-            cleanupError
-          );
-        }
+        await supabase.storage
+          .from(BUCKET_NAME)
+          .remove([storagePath])
+          .catch((cleanupError) => {
+            console.error(
+              "Failed to clean up uploaded file:",
+              cleanupError
+            );
+          });
 
         throw dbError;
       }
-
-
-      // ----------------------------------------------------
-      // SIGNED URL
-      // ----------------------------------------------------
 
       const {
         data,
@@ -573,21 +515,16 @@ exports.documentController = {
           60 * 10
         );
 
-
       if (error) {
         throw error;
       }
 
-
       return res.status(201).json({
-
         success: true,
-
         document: {
           ...result.rows[0],
           url: data.signedUrl
         }
-
       });
 
     } catch (err) {
@@ -604,29 +541,60 @@ exports.documentController = {
 
   // ============================================================
   // GET DOCUMENT FILE URL
+  // GET /:id/file-url
   // ============================================================
 
   async getDocumentFileUrl(req, res) {
 
+    const { id } = req.params;
+    const { user_id } = req.query;
+
     try {
 
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "viewer",
-          "manager",
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
       }
 
+      const userResult = await db.query(
+        `
+        SELECT
+          id,
+          role,
+          is_active
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [user_id]
+      );
 
-      const { id } = req.params;
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
 
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (
+        !["viewer", "manager", "owner"].includes(user.role)
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "You do not have permission to perform this action"
+        });
+      }
 
       const result = await db.query(
         `
@@ -639,28 +607,22 @@ exports.documentController = {
         [id]
       );
 
-
       if (result.rows.length === 0) {
-
         return res.status(404).json({
           success: false,
           error: "Document not found"
         });
       }
 
-
       const storagePath =
         result.rows[0].storage_path;
 
-
       if (!storagePath) {
-
         return res.status(404).json({
           success: false,
           error: "Document has no storage file"
         });
       }
-
 
       const {
         data,
@@ -672,11 +634,9 @@ exports.documentController = {
           60 * 10
         );
 
-
       if (error) {
         throw error;
       }
-
 
       return res.json({
         success: true,
@@ -696,216 +656,97 @@ exports.documentController = {
 
 
   // ============================================================
-  // CREATE DOCUMENT WITHOUT FILE
-  // ============================================================
-
-  async addDocument(req, res) {
-
-    try {
-
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "manager",
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
-      }
-
-
-      const {
-        file_name,
-        file_type,
-        file_size,
-        storage_path,
-        checksum_sha256,
-        page_count,
-        status = "pending_review",
-        extraction_status = "uploaded",
-        notes,
-        spam = false
-      } = req.body;
-
-
-      if (
-        !file_name ||
-        !file_type ||
-        file_size === undefined ||
-        !storage_path ||
-        !checksum_sha256
-      ) {
-
-        return res.status(400).json({
-          success: false,
-          error:
-            "file_name, file_type, file_size, storage_path and checksum_sha256 are required"
-        });
-      }
-
-
-      if (file_size > MAX_FILE_SIZE) {
-
-        return res.status(400).json({
-          success: false,
-          error: "File size cannot exceed 20MB"
-        });
-      }
-
-
-      if (typeof spam !== "boolean") {
-
-        return res.status(400).json({
-          success: false,
-          error: "spam must be true or false"
-        });
-      }
-
-
-      const result = await db.query(
-        `
-        INSERT INTO documents (
-          file_name,
-          file_type,
-          file_size,
-          storage_path,
-          checksum_sha256,
-          page_count,
-          status,
-          extraction_status,
-          notes,
-          uploaded_by,
-          spam
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          $8,
-          $9,
-          $10,
-          $11
-        )
-        RETURNING
-          id,
-          document_no,
-          file_name,
-          file_type,
-          file_size,
-          storage_path,
-          checksum_sha256,
-          page_count,
-          status,
-          extraction_status,
-          notes,
-          uploaded_by,
-          uploaded_at,
-          updated_at,
-          deleted_at,
-          spam
-        `,
-        [
-          file_name,
-          file_type,
-          file_size,
-          storage_path,
-          checksum_sha256,
-          page_count ?? null,
-          status,
-          extraction_status,
-          notes ?? null,
-          user.id,
-          spam
-        ]
-      );
-
-
-      return res.status(201).json({
-        success: true,
-        document: result.rows[0]
-      });
-
-    } catch (err) {
-
-      console.error(err);
-
-      return res.status(500).json({
-        success: false,
-        error: err.message
-      });
-    }
-  },
-
-
-  // ============================================================
   // UPDATE DOCUMENT
+  // PUT /:documentid
+  //
+  // Also handles soft delete / restore through deleted_at.
   // ============================================================
 
   async updateDocument(req, res) {
 
     const { documentid } = req.params;
 
+    const {
+      file_name,
+      file_type,
+      file_size,
+      storage_path,
+      checksum_sha256,
+      page_count,
+      status,
+      extraction_status,
+      notes,
+      spam,
+      deleted_at,
+      user_id
+    } = req.body;
+
     try {
 
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "manager",
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
       }
 
+      const userResult = await db.query(
+        `
+        SELECT
+          id,
+          role,
+          is_active
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [user_id]
+      );
 
-      const {
-        file_name,
-        file_type,
-        file_size,
-        storage_path,
-        checksum_sha256,
-        page_count,
-        status,
-        extraction_status,
-        notes,
-        spam,
-        deleted_at
-      } = req.body;
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
 
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (
+        !["manager", "owner"].includes(user.role)
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "You do not have permission to perform this action"
+        });
+      }
 
       if (
         file_size !== undefined &&
         file_size > MAX_FILE_SIZE
       ) {
-
         return res.status(400).json({
           success: false,
           error: "File size cannot exceed 20MB"
         });
       }
 
-
       if (
         spam !== undefined &&
         typeof spam !== "boolean"
       ) {
-
         return res.status(400).json({
           success: false,
           error: "spam must be true or false"
         });
       }
-
 
       const result = await db.query(
         `
@@ -982,15 +823,12 @@ exports.documentController = {
         ]
       );
 
-
       if (result.rows.length === 0) {
-
         return res.status(404).json({
           success: false,
           error: "Document not found"
         });
       }
-
 
       return res.json({
         success: true,
@@ -1011,30 +849,58 @@ exports.documentController = {
 
   // ============================================================
   // PERMANENT DELETE
+  // DELETE /:documentid
   // ============================================================
 
   async deleteDocument(req, res) {
 
     const { documentid } = req.params;
+    const { user_id } = req.body;
 
     try {
 
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
       }
 
+      const userResult = await db.query(
+        `
+        SELECT
+          id,
+          role,
+          is_active
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [user_id]
+      );
 
-      // ========================================================
-      // GET DOCUMENT
-      // ========================================================
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (user.role !== "owner") {
+        return res.status(403).json({
+          success: false,
+          error: "Only owners can permanently delete documents"
+        });
+      }
 
       const result = await db.query(
         `
@@ -1050,37 +916,27 @@ exports.documentController = {
         [documentid]
       );
 
-
       if (result.rows.length === 0) {
-
         return res.status(404).json({
           success: false,
           error: "Document not found"
         });
       }
 
-
       const document = result.rows[0];
-
-
-      // ========================================================
-      // DELETE STORAGE
-      // ========================================================
 
       if (document.storage_path) {
 
         const lastSlash =
           document.storage_path.lastIndexOf("/");
 
-
         const folder =
           lastSlash >= 0
             ? document.storage_path.substring(
-              0,
-              lastSlash + 1
-            )
+                0,
+                lastSlash + 1
+              )
             : "";
-
 
         const {
           data: files,
@@ -1089,28 +945,18 @@ exports.documentController = {
           .from(BUCKET_NAME)
           .list(folder);
 
-
         if (listError) {
-
-          console.error(
-            "Storage listing failed:",
-            listError
-          );
-
           return res.status(500).json({
             success: false,
-            error:
-              "Failed to find document storage files"
+            error: "Failed to find document storage files"
           });
         }
-
 
         const storageFiles =
           (files || []).map(
             (file) =>
               `${folder}${file.name}`
           );
-
 
         if (storageFiles.length > 0) {
 
@@ -1120,27 +966,14 @@ exports.documentController = {
             .from(BUCKET_NAME)
             .remove(storageFiles);
 
-
           if (storageError) {
-
-            console.error(
-              "Storage deletion failed:",
-              storageError
-            );
-
             return res.status(500).json({
               success: false,
-              error:
-                "Failed to delete document files from storage"
+              error: "Failed to delete document files from storage"
             });
           }
         }
       }
-
-
-      // ========================================================
-      // DELETE DATABASE ROW
-      // ========================================================
 
       await db.query(
         `
@@ -1150,175 +983,15 @@ exports.documentController = {
         [documentid]
       );
 
-
       return res.json({
-
         success: true,
-
         deleted: true,
-
         document: {
           id: document.id,
           document_no: document.document_no,
           file_name: document.file_name,
           spam: document.spam
         }
-
-      });
-
-    } catch (err) {
-
-      console.error(
-        "Failed to permanently delete document:",
-        err
-      );
-
-      return res.status(500).json({
-        success: false,
-        error:
-          err.message ||
-          "Failed to delete document"
-      });
-    }
-  },
-
-
-  // ============================================================
-  // SOFT DELETE
-  // ============================================================
-
-  async softDeleteDocument(req, res) {
-
-    const { documentid } = req.params;
-
-    try {
-
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "manager",
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
-      }
-
-
-      const result = await db.query(
-        `
-        UPDATE documents
-        SET
-          deleted_at = NOW(),
-          updated_at = NOW()
-        WHERE id = $1
-          AND deleted_at IS NULL
-        RETURNING
-          id,
-          document_no,
-          file_name,
-          storage_path,
-          deleted_at
-        `,
-        [documentid]
-      );
-
-
-      if (result.rows.length === 0) {
-
-        return res.status(404).json({
-          success: false,
-          error: "Document not found"
-        });
-      }
-
-
-      return res.json({
-        success: true,
-        deleted: true,
-        document: result.rows[0]
-      });
-
-    } catch (err) {
-
-      console.error(err);
-
-      return res.status(500).json({
-        success: false,
-        error: err.message
-      });
-    }
-  },
-
-
-  // ============================================================
-  // RESTORE
-  // ============================================================
-
-  async restoreDocument(req, res) {
-
-    const { documentid } = req.params;
-
-    try {
-
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "manager",
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
-      }
-
-
-      const result = await db.query(
-        `
-        UPDATE documents
-        SET
-          deleted_at = NULL,
-          updated_at = NOW()
-        WHERE id = $1
-          AND deleted_at IS NOT NULL
-        RETURNING
-          id,
-          document_no,
-          file_name,
-          file_type,
-          file_size,
-          storage_path,
-          checksum_sha256,
-          page_count,
-          status,
-          extraction_status,
-          notes,
-          uploaded_by,
-          uploaded_at,
-          updated_at,
-          deleted_at,
-          spam
-        `,
-        [documentid]
-      );
-
-
-      if (result.rows.length === 0) {
-
-        return res.status(404).json({
-          success: false,
-          error: "Deleted document not found"
-        });
-      }
-
-
-      return res.json({
-        success: true,
-        document: result.rows[0]
       });
 
     } catch (err) {
@@ -1335,28 +1008,60 @@ exports.documentController = {
 
   // ============================================================
   // GET ALL EXTRACTIONS
+  // GET /:documentid/extractions
   // ============================================================
 
   async getExtractions(req, res) {
 
     const { documentid } = req.params;
+    const { user_id } = req.query;
 
     try {
 
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "viewer",
-          "manager",
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
       }
 
+      const userResult = await db.query(
+        `
+        SELECT
+          id,
+          role,
+          is_active
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [user_id]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (
+        !["viewer", "manager", "owner"].includes(user.role)
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "You do not have permission to perform this action"
+        });
+      }
 
       const result = await db.query(
         `
@@ -1377,7 +1082,6 @@ exports.documentController = {
         [documentid]
       );
 
-
       return res.json(result.rows);
 
     } catch (err) {
@@ -1394,28 +1098,60 @@ exports.documentController = {
 
   // ============================================================
   // GET CURRENT EXTRACTION
+  // GET /:documentid/extractions/current
   // ============================================================
 
   async getCurrentExtraction(req, res) {
 
     const { documentid } = req.params;
+    const { user_id } = req.query;
 
     try {
 
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "viewer",
-          "manager",
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
       }
 
+      const userResult = await db.query(
+        `
+        SELECT
+          id,
+          role,
+          is_active
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [user_id]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
+
+      const user = userResult.rows[0];
+
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (
+        !["viewer", "manager", "owner"].includes(user.role)
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "You do not have permission to perform this action"
+        });
+      }
 
       const result = await db.query(
         `
@@ -1437,15 +1173,12 @@ exports.documentController = {
         [documentid]
       );
 
-
       if (result.rows.length === 0) {
-
         return res.status(404).json({
           success: false,
           error: "Current extraction not found"
         });
       }
-
 
       return res.json(result.rows[0]);
 
@@ -1463,74 +1196,91 @@ exports.documentController = {
 
   // ============================================================
   // ADD EXTRACTION
+  // POST /:documentid/extractions
   // ============================================================
 
   async addExtraction(req, res) {
 
     const { documentid } = req.params;
 
+    const {
+      method,
+      fields,
+      validation_issues = [],
+      full_text,
+      confidence,
+      duration_ms,
+      user_id
+    } = req.body;
+
     try {
 
-      const user = await requirePermission(
-        req,
-        res,
-        [
-          "manager",
-          "owner"
-        ]
-      );
-
-      if (!user) {
-        return;
+      if (!user_id) {
+        return res.status(401).json({
+          success: false,
+          error: "user_id is required"
+        });
       }
 
+      const userResult = await db.query(
+        `
+        SELECT
+          id,
+          role,
+          is_active
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [user_id]
+      );
 
-      const {
-        method,
-        fields,
-        validation_issues = [],
-        full_text,
-        confidence,
-        duration_ms
-      } = req.body;
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({
+          success: false,
+          error: "User not found"
+        });
+      }
 
+      const user = userResult.rows[0];
 
-      // ----------------------------------------------------
-      // VALIDATE METHOD
-      // ----------------------------------------------------
+      if (!user.is_active) {
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (
+        !["manager", "owner"].includes(user.role)
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "You do not have permission to perform this action"
+        });
+      }
 
       if (!VALID_EXTRACTION_METHODS.includes(method)) {
-
         return res.status(400).json({
           success: false,
           error: "Invalid extraction method"
         });
       }
 
-
-      // ----------------------------------------------------
-      // VALIDATE FIELDS
-      // ----------------------------------------------------
-
       if (
         fields === undefined ||
         fields === null
       ) {
-
         return res.status(400).json({
           success: false,
           error: "fields is required"
         });
       }
 
-
-      // ----------------------------------------------------
-      // VERIFY DOCUMENT
-      // ----------------------------------------------------
-
       const documentResult = await db.query(
         `
-        SELECT id
+        SELECT
+          id
         FROM documents
         WHERE id = $1
           AND deleted_at IS NULL
@@ -1538,34 +1288,23 @@ exports.documentController = {
         [documentid]
       );
 
-
       if (documentResult.rows.length === 0) {
-
         return res.status(404).json({
           success: false,
           error: "Document not found"
         });
       }
 
-
-      // ----------------------------------------------------
-      // MAKE OLD EXTRACTION NON-CURRENT
-      // ----------------------------------------------------
-
       await db.query(
         `
         UPDATE document_extractions
-        SET is_current = FALSE
+        SET
+          is_current = FALSE
         WHERE document_id = $1
           AND is_current = TRUE
         `,
         [documentid]
       );
-
-
-      // ----------------------------------------------------
-      // CREATE EXTRACTION
-      // ----------------------------------------------------
 
       const result = await db.query(
         `
@@ -1611,11 +1350,6 @@ exports.documentController = {
         ]
       );
 
-
-      // ----------------------------------------------------
-      // UPDATE DOCUMENT EXTRACTION STATUS
-      // ----------------------------------------------------
-
       await db.query(
         `
         UPDATE documents
@@ -1626,7 +1360,6 @@ exports.documentController = {
         `,
         [documentid]
       );
-
 
       return res.status(201).json({
         success: true,

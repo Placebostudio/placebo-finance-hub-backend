@@ -10,133 +10,7 @@ const VALID_ROLES = [
 exports.userController = {
 
   // ============================================================
-  // CHECK MANAGER / OWNER PERMISSION
-  // ============================================================
-
-  async checkManagerPermission(user_id) {
-
-    if (!user_id) {
-      return {
-        authorized: false,
-        status: 401,
-        error: "Unauthorized: user_id is required"
-      };
-    }
-
-    const result = await db.query(
-      `
-      SELECT
-        id,
-        role,
-        is_active
-      FROM users
-      WHERE id = $1
-      LIMIT 1
-      `,
-      [user_id]
-    );
-
-    if (result.rows.length === 0) {
-      return {
-        authorized: false,
-        status: 401,
-        error: "Unauthorized: user not found"
-      };
-    }
-
-    const user = result.rows[0];
-
-    if (!user.is_active) {
-      return {
-        authorized: false,
-        status: 403,
-        error: "Unauthorized: user account is inactive"
-      };
-    }
-
-    if (
-      user.role !== "manager" &&
-      user.role !== "owner"
-    ) {
-      return {
-        authorized: false,
-        status: 403,
-        error: "Forbidden: insufficient permissions"
-      };
-    }
-
-    return {
-      authorized: true,
-      user
-    };
-  },
-
-
-  // ============================================================
-  // CHECK OWNER PERMISSION
-  // ============================================================
-
-  async checkOwnerPermission(user_id) {
-
-    if (!user_id) {
-      return {
-        authorized: false,
-        status: 401,
-        error: "Unauthorized: user_id is required"
-      };
-    }
-
-    const result = await db.query(
-      `
-      SELECT
-        id,
-        role,
-        is_active
-      FROM users
-      WHERE id = $1
-      LIMIT 1
-      `,
-      [user_id]
-    );
-
-    if (result.rows.length === 0) {
-      return {
-        authorized: false,
-        status: 401,
-        error: "Unauthorized: user not found"
-      };
-    }
-
-    const user = result.rows[0];
-
-    if (!user.is_active) {
-      return {
-        authorized: false,
-        status: 403,
-        error: "Unauthorized: user account is inactive"
-      };
-    }
-
-    if (user.role !== "owner") {
-      return {
-        authorized: false,
-        status: 403,
-        error: "Forbidden: only owners can perform this action"
-      };
-    }
-
-    return {
-      authorized: true,
-      user
-    };
-  },
-
-
-  // ============================================================
   // GET ALL USERS
-  //
-  // Manager / Owner only.
-  // Viewers cannot access the user management page.
   // ============================================================
 
   async getUsers(req, res) {
@@ -149,26 +23,46 @@ exports.userController = {
         user_id
       } = req.query;
 
+      const userResult = await db.query(
+        `
+                SELECT
+                    role,
+                    is_active
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+        [user_id]
+      );
 
-      // ==========================================================
-      // CHECK PERMISSION
-      // ==========================================================
+      if (userResult.rows.length === 0) {
 
-      const permission =
-        await this.checkManagerPermission(user_id);
-
-      if (!permission.authorized) {
-
-        return res.status(permission.status).json({
+        return res.status(401).json({
           success: false,
-          error: permission.error
+          error: "User not found"
         });
       }
 
+      const requester = userResult.rows[0];
 
-      // ==========================================================
-      // FILTERS
-      // ==========================================================
+      if (!requester.is_active) {
+
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (
+        requester.role !== "manager" &&
+        requester.role !== "owner"
+      ) {
+
+        return res.status(403).json({
+          success: false,
+          error: "Insufficient permissions"
+        });
+      }
 
       const conditions = [];
       const values = [];
@@ -187,7 +81,6 @@ exports.userController = {
         );
       }
 
-
       if (
         is_active === "true" ||
         is_active === "false"
@@ -202,39 +95,32 @@ exports.userController = {
         );
       }
 
-
       const whereClause =
         conditions.length > 0
           ? `WHERE ${conditions.join(" AND ")}`
           : "";
 
-
-      // ==========================================================
-      // QUERY
-      // ==========================================================
-
       const result = await db.query(
         `
-        SELECT
-          id,
-          username,
-          email,
-          full_name,
-          role,
-          is_active,
-          invited_by,
-          invited_at,
-          accepted_at,
-          last_login_at,
-          created_at,
-          spam
-        FROM users
-        ${whereClause}
-        ORDER BY created_at DESC
-        `,
+                SELECT
+                    id,
+                    username,
+                    email,
+                    full_name,
+                    role,
+                    is_active,
+                    invited_by,
+                    invited_at,
+                    accepted_at,
+                    last_login_at,
+                    created_at,
+                    spam
+                FROM users
+                ${whereClause}
+                ORDER BY created_at DESC
+                `,
         values
       );
-
 
       return res.json(result.rows);
 
@@ -252,8 +138,6 @@ exports.userController = {
 
   // ============================================================
   // GET ONE USER
-  //
-  // Manager / Owner only.
   // ============================================================
 
   async getUser(req, res) {
@@ -261,55 +145,71 @@ exports.userController = {
     const { userid } = req.params;
     const { user_id } = req.query;
 
-
     try {
 
-      // ==========================================================
-      // CHECK PERMISSION
-      // ==========================================================
+      const userResult = await db.query(
+        `
+                SELECT
+                    role,
+                    is_active
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+        [user_id]
+      );
 
-      const permission =
-        await this.checkManagerPermission(user_id);
+      if (userResult.rows.length === 0) {
 
-      if (!permission.authorized) {
-
-        return res.status(permission.status).json({
+        return res.status(401).json({
           success: false,
-          error: permission.error
+          error: "User not found"
         });
       }
 
+      const requester = userResult.rows[0];
 
-      // ==========================================================
-      // GET USER
-      // ==========================================================
+      if (!requester.is_active) {
+
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (
+        requester.role !== "manager" &&
+        requester.role !== "owner"
+      ) {
+
+        return res.status(403).json({
+          success: false,
+          error: "Insufficient permissions"
+        });
+      }
 
       const result = await db.query(
         `
-        SELECT
-          id,
-          username,
-          email,
-          full_name,
-          role,
-          is_active,
-          invited_by,
-          invited_at,
-          accepted_at,
-          last_login_at,
-          created_at,
-          spam
-        FROM users
-        WHERE id = $1
-        `,
+                SELECT
+                    id,
+                    username,
+                    email,
+                    full_name,
+                    role,
+                    is_active,
+                    invited_by,
+                    invited_at,
+                    accepted_at,
+                    last_login_at,
+                    created_at,
+                    spam
+                FROM users
+                WHERE id = $1
+                `,
         [userid]
       );
 
-
-      const user = result.rows[0];
-
-
-      if (!user) {
+      if (result.rows.length === 0) {
 
         return res.status(404).json({
           success: false,
@@ -317,8 +217,7 @@ exports.userController = {
         });
       }
 
-
-      return res.json(user);
+      return res.json(result.rows[0]);
 
     } catch (err) {
 
@@ -334,12 +233,6 @@ exports.userController = {
 
   // ============================================================
   // ADD / INVITE USER
-  //
-  // Manager / Owner can create:
-  // - manager
-  // - viewer
-  //
-  // Owner cannot be created through this endpoint.
   // ============================================================
 
   async addUser(req, res) {
@@ -354,28 +247,48 @@ exports.userController = {
       user_id
     } = req.body;
 
-
     try {
 
-      // ==========================================================
-      // CHECK PERMISSION
-      // ==========================================================
+      const userResult = await db.query(
+        `
+                SELECT
+                    role,
+                    is_active
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+        [user_id]
+      );
 
-      const permission =
-        await this.checkManagerPermission(user_id);
+      if (userResult.rows.length === 0) {
 
-      if (!permission.authorized) {
-
-        return res.status(permission.status).json({
+        return res.status(401).json({
           success: false,
-          error: permission.error
+          error: "User not found"
         });
       }
 
+      const requester = userResult.rows[0];
 
-      // ==========================================================
-      // REQUIRED FIELDS
-      // ==========================================================
+      if (!requester.is_active) {
+
+        return res.status(403).json({
+          success: false,
+          error: "User account is inactive"
+        });
+      }
+
+      if (
+        requester.role !== "manager" &&
+        requester.role !== "owner"
+      ) {
+
+        return res.status(403).json({
+          success: false,
+          error: "Insufficient permissions"
+        });
+      }
 
       if (
         !email ||
@@ -391,20 +304,10 @@ exports.userController = {
         });
       }
 
-
-      // ==========================================================
-      // NORMALIZE ROLE
-      // ==========================================================
-
       const normalizedRole =
         String(role)
           .trim()
           .toLowerCase();
-
-
-      // ==========================================================
-      // OWNER CANNOT BE CREATED
-      // ==========================================================
 
       if (normalizedRole === "owner") {
 
@@ -415,14 +318,16 @@ exports.userController = {
         });
       }
 
-
       const allowedRoles = [
         "manager",
         "viewer"
       ];
 
-
-      if (!allowedRoles.includes(normalizedRole)) {
+      if (
+        !allowedRoles.includes(
+          normalizedRole
+        )
+      ) {
 
         return res.status(400).json({
           success: false,
@@ -431,56 +336,46 @@ exports.userController = {
         });
       }
 
-
-      // ==========================================================
-      // PASSWORD HASH
-      // ==========================================================
-
       const passwordHash =
         await argon2.hash(password);
 
-
-      // ==========================================================
-      // INSERT
-      // ==========================================================
-
       const result = await db.query(
         `
-        INSERT INTO public.users (
-          email,
-          username,
-          full_name,
-          password,
-          role,
-          is_active,
-          invited_by,
-          invited_at,
-          accepted_at
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          false,
-          $6,
-          now(),
-          NULL
-        )
-        RETURNING
-          id,
-          email,
-          username,
-          full_name,
-          role,
-          is_active,
-          invited_by,
-          invited_at,
-          accepted_at,
-          last_login_at,
-          created_at
-        `,
+                INSERT INTO public.users (
+                    email,
+                    username,
+                    full_name,
+                    password,
+                    role,
+                    is_active,
+                    invited_by,
+                    invited_at,
+                    accepted_at
+                )
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    false,
+                    $6,
+                    now(),
+                    NULL
+                )
+                RETURNING
+                    id,
+                    email,
+                    username,
+                    full_name,
+                    role,
+                    is_active,
+                    invited_by,
+                    invited_at,
+                    accepted_at,
+                    last_login_at,
+                    created_at
+                `,
         [
           email.trim(),
           username.trim(),
@@ -490,7 +385,6 @@ exports.userController = {
           invited_by || null
         ]
       );
-
 
       return res.status(201).json({
         success: true,
@@ -504,7 +398,6 @@ exports.userController = {
         err
       );
 
-
       if (err.code === "23505") {
 
         return res.status(409).json({
@@ -513,7 +406,6 @@ exports.userController = {
             "A user with this email or username already exists"
         });
       }
-
 
       return res.status(500).json({
         success: false,
@@ -527,9 +419,6 @@ exports.userController = {
 
   // ============================================================
   // LOGIN
-  //
-  // This is authentication, not user management.
-  // No manager/owner permission check here.
   // ============================================================
 
   async login(req, res) {
@@ -538,7 +427,6 @@ exports.userController = {
       username,
       password
     } = req.body;
-
 
     try {
 
@@ -554,29 +442,27 @@ exports.userController = {
         });
       }
 
-
       const result = await db.query(
         `
-        SELECT
-          id,
-          username,
-          email,
-          full_name,
-          role,
-          is_active,
-          invited_by,
-          invited_at,
-          accepted_at,
-          last_login_at,
-          created_at,
-          password
-        FROM users
-        WHERE username = $1
-        LIMIT 1
-        `,
+                SELECT
+                    id,
+                    username,
+                    email,
+                    full_name,
+                    role,
+                    is_active,
+                    invited_by,
+                    invited_at,
+                    accepted_at,
+                    last_login_at,
+                    created_at,
+                    password
+                FROM users
+                WHERE username = $1
+                LIMIT 1
+                `,
         [username]
       );
-
 
       if (result.rows.length === 0) {
 
@@ -587,21 +473,13 @@ exports.userController = {
         });
       }
 
-
-      const user =
-        result.rows[0];
-
-
-      // ==========================================================
-      // VERIFY PASSWORD
-      // ==========================================================
+      const user = result.rows[0];
 
       const passwordValid =
         await argon2.verify(
           user.password,
           password
         );
-
 
       if (!passwordValid) {
 
@@ -612,11 +490,6 @@ exports.userController = {
         });
       }
 
-
-      // ==========================================================
-      // CHECK ACTIVE
-      // ==========================================================
-
       if (!user.is_active) {
 
         return res.status(403).json({
@@ -625,11 +498,6 @@ exports.userController = {
             "This account has been deactivated"
         });
       }
-
-
-      // ==========================================================
-      // CHECK INVITATION
-      // ==========================================================
 
       if (!user.accepted_at) {
 
@@ -640,29 +508,18 @@ exports.userController = {
         });
       }
 
-
-      // ==========================================================
-      // RECORD LOGIN
-      // ==========================================================
-
       await db.query(
         `
-        UPDATE users
-        SET last_login_at = now()
-        WHERE id = $1
-        `,
+                UPDATE users
+                SET last_login_at = now()
+                WHERE id = $1
+                `,
         [user.id]
       );
 
-
-      user.last_login_at =
-        new Date();
-
-
-      // Never expose password hash
+      user.last_login_at = new Date();
 
       delete user.password;
-
 
       return res.json({
         success: true,
@@ -683,43 +540,38 @@ exports.userController = {
 
   // ============================================================
   // ACCEPT INVITATION
-  //
-  // This is part of the invitation flow.
-  // No manager/owner permission check.
   // ============================================================
 
   async acceptInvitation(req, res) {
 
     const { userid } = req.params;
 
-
     try {
 
       const result = await db.query(
         `
-        UPDATE users
-        SET
-          accepted_at =
-            COALESCE(
-              accepted_at,
-              now()
-            )
-        WHERE id = $1
-        RETURNING
-          id,
-          email,
-          full_name,
-          role,
-          is_active,
-          invited_by,
-          invited_at,
-          accepted_at,
-          last_login_at,
-          created_at
-        `,
+                UPDATE users
+                SET
+                    accepted_at =
+                        COALESCE(
+                            accepted_at,
+                            now()
+                        )
+                WHERE id = $1
+                RETURNING
+                    id,
+                    email,
+                    full_name,
+                    role,
+                    is_active,
+                    invited_by,
+                    invited_at,
+                    accepted_at,
+                    last_login_at,
+                    created_at
+                `,
         [userid]
       );
-
 
       if (result.rows.length === 0) {
 
@@ -729,7 +581,6 @@ exports.userController = {
             "User not found"
         });
       }
-
 
       return res.status(200).json({
         success: true,
@@ -750,17 +601,6 @@ exports.userController = {
 
   // ============================================================
   // UPDATE USER
-  //
-  // Manager:
-  // - email
-  // - full_name
-  // - is_active
-  //
-  // Owner:
-  // - email
-  // - full_name
-  // - role
-  // - is_active
   // ============================================================
 
   async updateUser(req, res) {
@@ -775,32 +615,50 @@ exports.userController = {
       user_id
     } = req.body;
 
-
     try {
 
-      // ==========================================================
-      // CHECK MANAGER / OWNER
-      // ==========================================================
+      const userResult = await db.query(
+        `
+                SELECT
+                    role,
+                    is_active
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+        [user_id]
+      );
 
-      const permission =
-        await this.checkManagerPermission(user_id);
+      if (userResult.rows.length === 0) {
 
-      if (!permission.authorized) {
-
-        return res.status(permission.status).json({
+        return res.status(401).json({
           success: false,
-          error: permission.error
+          error: "User not found"
         });
       }
 
+      const requester = userResult.rows[0];
 
-      const requester =
-        permission.user;
+      if (!requester.is_active) {
 
+        return res.status(403).json({
+          success: false,
+          error:
+            "User account is inactive"
+        });
+      }
 
-      // ==========================================================
-      // VALIDATE ROLE
-      // ==========================================================
+      if (
+        requester.role !== "manager" &&
+        requester.role !== "owner"
+      ) {
+
+        return res.status(403).json({
+          success: false,
+          error:
+            "Insufficient permissions"
+        });
+      }
 
       if (
         role !== undefined &&
@@ -814,11 +672,6 @@ exports.userController = {
         });
       }
 
-
-      // ==========================================================
-      // ONLY OWNER CAN CHANGE ROLE
-      // ==========================================================
-
       if (
         role !== undefined &&
         requester.role !== "owner"
@@ -827,14 +680,9 @@ exports.userController = {
         return res.status(403).json({
           success: false,
           error:
-            "Forbidden: only owners can change user roles"
+            "Only owners can change user roles"
         });
       }
-
-
-      // ==========================================================
-      // ONLY BOOLEAN FOR ACTIVE
-      // ==========================================================
 
       if (
         is_active !== undefined &&
@@ -848,24 +696,17 @@ exports.userController = {
         });
       }
 
-
-      // ==========================================================
-      // CHECK TARGET USER
-      // ==========================================================
-
-      const existing =
-        await db.query(
-          `
-          SELECT
-            id,
-            role,
-            is_active
-          FROM users
-          WHERE id = $1
-          `,
-          [userid]
-        );
-
+      const existing = await db.query(
+        `
+                SELECT
+                    id,
+                    role,
+                    is_active
+                FROM users
+                WHERE id = $1
+                `,
+        [userid]
+      );
 
       if (existing.rows.length === 0) {
 
@@ -876,11 +717,6 @@ exports.userController = {
         });
       }
 
-
-      // ==========================================================
-      // PREVENT MANAGER FROM MODIFYING OWNER
-      // ==========================================================
-
       if (
         requester.role !== "owner" &&
         existing.rows[0].role === "owner"
@@ -889,67 +725,60 @@ exports.userController = {
         return res.status(403).json({
           success: false,
           error:
-            "Forbidden: managers cannot modify an owner"
+            "Managers cannot modify an owner"
         });
       }
 
+      const result = await db.query(
+        `
+                UPDATE users
+                SET
+                    email =
+                        COALESCE(
+                            $1,
+                            email
+                        ),
 
-      // ==========================================================
-      // UPDATE
-      // ==========================================================
+                    full_name =
+                        COALESCE(
+                            $2,
+                            full_name
+                        ),
 
-      const result =
-        await db.query(
-          `
-          UPDATE users
-          SET
-            email =
-              COALESCE(
-                $1,
-                email
-              ),
+                    role =
+                        COALESCE(
+                            $3,
+                            role
+                        ),
 
-            full_name =
-              COALESCE(
-                $2,
-                full_name
-              ),
+                    is_active =
+                        COALESCE(
+                            $4,
+                            is_active
+                        )
 
-            role =
-              COALESCE(
-                $3,
-                role
-              ),
+                WHERE id = $5
 
-            is_active =
-              COALESCE(
-                $4,
-                is_active
-              )
-
-          WHERE id = $5
-
-          RETURNING
-            id,
-            email,
-            full_name,
-            role,
-            is_active,
-            invited_by,
-            invited_at,
-            accepted_at,
-            last_login_at,
-            created_at
-          `,
-          [
-            email ?? null,
-            full_name ?? null,
-            role ?? null,
-            is_active ?? null,
-            userid
-          ]
-        );
-
+                RETURNING
+                    id,
+                    email,
+                    full_name,
+                    role,
+                    is_active,
+                    invited_by,
+                    invited_at,
+                    accepted_at,
+                    last_login_at,
+                    created_at
+                `,
+        [
+          email ?? null,
+          full_name ?? null,
+          role ?? null,
+          is_active ?? null,
+          userid
+        ]
+      );
 
       return res.status(200).json({
         success: true,
@@ -970,47 +799,63 @@ exports.userController = {
 
   // ============================================================
   // DEACTIVATE USER
-  //
-  // OWNER ONLY
-  //
-  // Replaces DELETE.
   // ============================================================
 
   async deleteUser(req, res) {
 
     const { userid } = req.params;
-    const {
-      requester_id
-    } = req.body || {};
 
+    const {
+      user_id
+    } = req.body || {};
 
     try {
 
-      // ==========================================================
-      // OWNER CHECK
-      // ==========================================================
+      const userResult = await db.query(
+        `
+                SELECT
+                    role,
+                    is_active
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+        [user_id]
+      );
 
-      const permission =
-        await this.checkOwnerPermission(
-          requester_id
-        );
+      if (userResult.rows.length === 0) {
 
-
-      if (!permission.authorized) {
-
-        return res.status(permission.status).json({
+        return res.status(401).json({
           success: false,
-          error: permission.error
+          error:
+            "User not found"
         });
       }
 
+      const requester = userResult.rows[0];
 
-      // ==========================================================
-      // PREVENT SELF-DEACTIVATION
-      // ==========================================================
+      if (!requester.is_active) {
+
+        return res.status(403).json({
+          success: false,
+          error:
+            "User account is inactive"
+        });
+      }
 
       if (
-        String(requester_id) ===
+        requester.role !== "owner"
+      ) {
+
+        return res.status(403).json({
+          success: false,
+          error:
+            "Only owner can deactivate users"
+        });
+      }
+
+      if (
+        String(user_id) ===
         String(userid)
       ) {
 
@@ -1021,35 +866,26 @@ exports.userController = {
         });
       }
 
-
-      // ==========================================================
-      // DEACTIVATE
-      // ==========================================================
-
-      const result =
-        await db.query(
-          `
-          UPDATE users
-          SET
-            is_active = false
-
-          WHERE id = $1
-
-          RETURNING
-            id,
-            email,
-            full_name,
-            role,
-            is_active,
-            invited_by,
-            invited_at,
-            accepted_at,
-            last_login_at,
-            created_at
-          `,
-          [userid]
-        );
-
+      const result = await db.query(
+        `
+                UPDATE users
+                SET
+                    is_active = false
+                WHERE id = $1
+                RETURNING
+                    id,
+                    email,
+                    full_name,
+                    role,
+                    is_active,
+                    invited_by,
+                    invited_at,
+                    accepted_at,
+                    last_login_at,
+                    created_at
+                `,
+        [userid]
+      );
 
       if (result.rows.length === 0) {
 
@@ -1059,7 +895,6 @@ exports.userController = {
             "User not found"
         });
       }
-
 
       return res.status(200).json({
         success: true,
@@ -1081,8 +916,6 @@ exports.userController = {
 
   // ============================================================
   // REACTIVATE USER
-  //
-  // OWNER ONLY
   // ============================================================
 
   async reactivateUser(req, res) {
@@ -1090,59 +923,74 @@ exports.userController = {
     const { userid } = req.params;
 
     const {
-      requester_id
+      user_id
     } = req.body || {};
-
 
     try {
 
-      // ==========================================================
-      // OWNER CHECK
-      // ==========================================================
+      const userResult = await db.query(
+        `
+                SELECT
+                    role,
+                    is_active
+                FROM users
+                WHERE id = $1
+                LIMIT 1
+                `,
+        [user_id]
+      );
 
-      const permission =
-        await this.checkOwnerPermission(
-          requester_id
-        );
+      if (userResult.rows.length === 0) {
 
-
-      if (!permission.authorized) {
-
-        return res.status(permission.status).json({
+        return res.status(401).json({
           success: false,
-          error: permission.error
+          error:
+            "User not found"
         });
       }
 
+      const requester = userResult.rows[0];
 
-      // ==========================================================
-      // REACTIVATE
-      // ==========================================================
+      if (!requester.is_active) {
 
-      const result =
-        await db.query(
-          `
-          UPDATE users
-          SET
-            is_active = true
+        return res.status(403).json({
+          success: false,
+          error:
+            "User account is inactive"
+        });
+      }
 
-          WHERE id = $1
+      if (
+        requester.role !== "owner"
+      ) {
 
-          RETURNING
-            id,
-            email,
-            full_name,
-            role,
-            is_active,
-            invited_by,
-            invited_at,
-            accepted_at,
-            last_login_at,
-            created_at
-          `,
-          [userid]
-        );
+        return res.status(403).json({
+          success: false,
+          error:
+            "Only owner can reactivate users"
+        });
+      }
 
+      const result = await db.query(
+        `
+                UPDATE users
+                SET
+                    is_active = true
+                WHERE id = $1
+                RETURNING
+                    id,
+                    email,
+                    full_name,
+                    role,
+                    is_active,
+                    invited_by,
+                    invited_at,
+                    accepted_at,
+                    last_login_at,
+                    created_at
+                `,
+        [userid]
+      );
 
       if (result.rows.length === 0) {
 
@@ -1152,7 +1000,6 @@ exports.userController = {
             "User not found"
         });
       }
-
 
       return res.status(200).json({
         success: true,
