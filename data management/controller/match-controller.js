@@ -406,7 +406,7 @@ const matchController = {
                 Number(expenseAllocation.rows[0].allocated);
 
             const expenseLimit =
-                Number(expense.paid_amount_sek);
+                Number(expense.gross_amount_sek);
 
             if (
                 currentExpenseAllocation +
@@ -449,7 +449,7 @@ const matchController = {
                 Number(transactionAllocation.rows[0].allocated);
 
             const transactionLimit =
-                Number(transaction.billed_amount);
+                Math.abs(Number(transaction.billed_amount));
 
             if (
                 currentTransactionAllocation +
@@ -478,32 +478,32 @@ const matchController = {
 
             const result = await db.query(
                 `INSERT INTO matches (
-                    expense_id,
-                    transaction_id,
-                    allocated_amount,
-                    score,
-                    match_type,
-                    reasons,
-                    status,
-                    confirmed_by,
-                    confirmed_at,
-                    spam
+                expense_id,
+                transaction_id,
+                allocated_amount,
+                score,
+                match_type,
+                reasons,
+                status,
+                confirmed_by,
+                confirmed_at,
+                spam
                 )
                 VALUES (
-                    $1,
-                    $2,
-                    $3,
-                    $4,
-                    $5,
-                    $6,
-                    $7,
-                    $8,
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7::match_status,
+                $8,
                     CASE
-                        WHEN $7 = 'confirmed'
-                        THEN NOW()
-                        ELSE NULL
-                    END,
-                    $9
+                    WHEN $7::match_status = 'confirmed'::match_status
+                    THEN NOW()
+                    ELSE NULL
+                END,
+                $9
                 )
                 RETURNING *`,
                 [

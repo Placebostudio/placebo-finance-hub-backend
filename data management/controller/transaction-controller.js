@@ -28,16 +28,21 @@ const transactionController = {
 
             const {
                 statement_id,
+                statement_period,
                 spam
             } = req.query;
 
             let query = `
-                SELECT *
-                FROM transactions
-            `;
+            SELECT *
+            FROM transactions
+        `;
 
             const conditions = [];
             const params = [];
+
+            // ============================================================
+            // STATEMENT
+            // ============================================================
 
             if (statement_id) {
 
@@ -47,6 +52,23 @@ const transactionController = {
                     `statement_id = $${params.length}`
                 );
             }
+
+            // ============================================================
+            // ACCOUNTING PERIOD
+            // ============================================================
+
+            if (statement_period) {
+
+                params.push(statement_period);
+
+                conditions.push(
+                    `statement_period = $${params.length}`
+                );
+            }
+
+            // ============================================================
+            // SPAM
+            // ============================================================
 
             if (spam === "true" || spam === "false") {
 
@@ -59,16 +81,26 @@ const transactionController = {
                 );
             }
 
+            // ============================================================
+            // WHERE
+            // ============================================================
+
             if (conditions.length > 0) {
 
                 query += `
-                    WHERE ${conditions.join(" AND ")}
-                `;
+                WHERE ${conditions.join(" AND ")}
+            `;
             }
 
+            // ============================================================
+            // ORDER
+            // ============================================================
+
             query += `
-                ORDER BY transaction_date DESC, line_no ASC
-            `;
+            ORDER BY
+                transaction_date DESC,
+                line_no ASC
+        `;
 
             const result = await db.query(
                 query,
@@ -79,7 +111,10 @@ const transactionController = {
 
         } catch (err) {
 
-            console.error(err);
+            console.error(
+                "Failed to get transactions:",
+                err
+            );
 
             return res.status(500).json({
                 success: false,

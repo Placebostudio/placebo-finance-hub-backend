@@ -4,7 +4,7 @@ exports.currencyController = {
     async getCurrencies(req, res) {
         try {
             const response = await fetch(
-                "https://api.frankfurter.dev/v2/rates?base=EUR&quotes=ILS,EUR,SEK,USD,GBP,JPY,CHF"
+                "https://api.frankfurter.dev/v2/rates?base=EUR&quotes=ILS,EUR,SEK,USD,GBP,JPY,CHF,NAD"
             );
 
             if (!response.ok) {
