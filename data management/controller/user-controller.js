@@ -106,71 +106,30 @@ exports.userController = {
   async getUser(req, res) {
 
     const { userid } = req.params;
-    const { user_id } = req.query;
 
     try {
 
-      const userResult = await db.query(
-        `
-                SELECT
-                    role,
-                    is_active
-                FROM users
-                WHERE id = $1
-                LIMIT 1
-                `,
-        [user_id]
-      );
-
-      if (userResult.rows.length === 0) {
-
-        return res.status(401).json({
-          success: false,
-          error: "User not found"
-        });
-      }
-
-      const requester = userResult.rows[0];
-
-      if (!requester.is_active) {
-
-        return res.status(403).json({
-          success: false,
-          error: "User account is inactive"
-        });
-      }
-
-      if (
-        requester.role !== "manager" &&
-        requester.role !== "owner"
-      ) {
-
-        return res.status(403).json({
-          success: false,
-          error: "Insufficient permissions"
-        });
-      }
-
       const result = await db.query(
         `
-                SELECT
-                    id,
-                    username,
-                    email,
-                    full_name,
-                    role,
-                    is_active,
-                    invited_by,
-                    invited_at,
-                    accepted_at,
-                    last_login_at,
-                    created_at,
-                    spam
-                FROM users
-                WHERE id = $1
-                `,
+      SELECT
+        id,
+        username,
+        email,
+        full_name,
+        role,
+        is_active,
+        invited_by,
+        invited_at,
+        accepted_at,
+        last_login_at,
+        created_at,
+        spam
+      FROM users
+      WHERE id = $1
+      `,
         [userid]
       );
+
 
       if (result.rows.length === 0) {
 
@@ -180,7 +139,10 @@ exports.userController = {
         });
       }
 
-      return res.json(result.rows[0]);
+
+      return res.json(
+        result.rows[0]
+      );
 
     } catch (err) {
 
