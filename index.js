@@ -56,7 +56,7 @@ app.use(cors({
     origin: [
         "http://localhost:3000",
         "http://localhost:3001",
-        "https://placebo-plm-js.vercel.app",
+        "https://placebo-finance-hub-frontend.vercel.app",
         "http://localhost:5173"
     ],
     credentials: true
