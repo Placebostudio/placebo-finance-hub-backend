@@ -448,7 +448,6 @@ const audit_logController = {
     async addAudit_log(req, res) {
 
         const {
-            user_id,
             actor_id,
             action,
             entity_type,
@@ -459,58 +458,6 @@ const audit_logController = {
         } = req.body;
 
         try {
-
-            // ====================================================
-            // CHECK REQUESTER
-            // ====================================================
-
-            if (!user_id) {
-
-                return res.status(401).json({
-                    success: false,
-                    error: "Unauthorized: user_id is required"
-                });
-            }
-
-            const requesterResult = await db.query(
-                `
-                SELECT id, role, is_active
-                FROM users
-                WHERE id = $1
-                LIMIT 1
-                `,
-                [user_id]
-            );
-
-            if (requesterResult.rows.length === 0) {
-
-                return res.status(401).json({
-                    success: false,
-                    error: "Unauthorized: requester not found"
-                });
-            }
-
-            const requester =
-                requesterResult.rows[0];
-
-            if (!requester.is_active) {
-
-                return res.status(403).json({
-                    success: false,
-                    error:
-                        "Unauthorized: requester account is inactive"
-                });
-            }
-
-            if (requester.role !== "owner") {
-
-                return res.status(403).json({
-                    success: false,
-                    error:
-                        "Forbidden: only owners can create audit logs"
-                });
-            }
-
 
             // ====================================================
             // REQUIRED FIELDS
@@ -536,26 +483,26 @@ const audit_logController = {
 
             const result = await db.query(
                 `
-                INSERT INTO audit_logs (
-                    actor_id,
-                    action,
-                    entity_type,
-                    entity_id,
-                    before,
-                    after,
-                    ip_address
-                )
-                VALUES (
-                    $1,
-                    $2,
-                    $3,
-                    $4,
-                    $5,
-                    $6,
-                    $7
-                )
-                RETURNING *
-                `,
+            INSERT INTO audit_logs (
+                actor_id,
+                action,
+                entity_type,
+                entity_id,
+                before,
+                after,
+                ip_address
+            )
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7
+            )
+            RETURNING *
+            `,
                 [
                     actor_id,
                     action,
@@ -584,16 +531,9 @@ const audit_logController = {
     },
 
 
-    // ============================================================
-    // UPDATE AUDIT LOG
-    //
-    // Owner only.
-    // ============================================================
-
     async updateAudit_log(req, res) {
 
         const {
-            user_id,
             actor_id,
             action,
             entity_type,
@@ -610,75 +550,23 @@ const audit_logController = {
         try {
 
             // ====================================================
-            // CHECK REQUESTER
-            // ====================================================
-
-            if (!user_id) {
-
-                return res.status(401).json({
-                    success: false,
-                    error: "Unauthorized: user_id is required"
-                });
-            }
-
-            const requesterResult = await db.query(
-                `
-                SELECT id, role, is_active
-                FROM users
-                WHERE id = $1
-                LIMIT 1
-                `,
-                [user_id]
-            );
-
-            if (requesterResult.rows.length === 0) {
-
-                return res.status(401).json({
-                    success: false,
-                    error: "Unauthorized: requester not found"
-                });
-            }
-
-            const requester =
-                requesterResult.rows[0];
-
-            if (!requester.is_active) {
-
-                return res.status(403).json({
-                    success: false,
-                    error:
-                        "Unauthorized: requester account is inactive"
-                });
-            }
-
-            if (requester.role !== "owner") {
-
-                return res.status(403).json({
-                    success: false,
-                    error:
-                        "Forbidden: only owners can modify audit logs"
-                });
-            }
-
-
-            // ====================================================
             // UPDATE
             // ====================================================
 
             const result = await db.query(
                 `
-                UPDATE audit_logs
-                SET
-                    actor_id = COALESCE($1, actor_id),
-                    action = COALESCE($2, action),
-                    entity_type = COALESCE($3, entity_type),
-                    entity_id = COALESCE($4, entity_id),
-                    before = COALESCE($5, before),
-                    after = COALESCE($6, after),
-                    ip_address = COALESCE($7, ip_address)
-                WHERE id = $8
-                RETURNING *
-                `,
+            UPDATE audit_logs
+            SET
+                actor_id = COALESCE($1, actor_id),
+                action = COALESCE($2, action),
+                entity_type = COALESCE($3, entity_type),
+                entity_id = COALESCE($4, entity_id),
+                before = COALESCE($5, before),
+                after = COALESCE($6, after),
+                ip_address = COALESCE($7, ip_address)
+            WHERE id = $8
+            RETURNING *
+            `,
                 [
                     actor_id ?? null,
                     action ?? null,
