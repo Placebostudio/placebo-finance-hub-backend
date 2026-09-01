@@ -14,58 +14,17 @@ exports.userController = {
   // ============================================================
 
   async getUsers(req, res) {
-
     try {
 
       const {
         spam,
-        is_active,
-        user_id
+        is_active
       } = req.query;
 
-      const userResult = await db.query(
-        `
-                SELECT
-                    role,
-                    is_active
-                FROM users
-                WHERE id = $1
-                LIMIT 1
-                `,
-        [user_id]
-      );
-
-      if (userResult.rows.length === 0) {
-
-        return res.status(401).json({
-          success: false,
-          error: "User not found"
-        });
-      }
-
-      const requester = userResult.rows[0];
-
-      if (!requester.is_active) {
-
-        return res.status(403).json({
-          success: false,
-          error: "User account is inactive"
-        });
-      }
-
-      if (
-        requester.role !== "manager" &&
-        requester.role !== "owner"
-      ) {
-
-        return res.status(403).json({
-          success: false,
-          error: "Insufficient permissions"
-        });
-      }
 
       const conditions = [];
       const values = [];
+
 
       if (
         spam === "true" ||
@@ -81,6 +40,7 @@ exports.userController = {
         );
       }
 
+
       if (
         is_active === "true" ||
         is_active === "false"
@@ -95,32 +55,35 @@ exports.userController = {
         );
       }
 
+
       const whereClause =
         conditions.length > 0
           ? `WHERE ${conditions.join(" AND ")}`
           : "";
 
+
       const result = await db.query(
         `
-                SELECT
-                    id,
-                    username,
-                    email,
-                    full_name,
-                    role,
-                    is_active,
-                    invited_by,
-                    invited_at,
-                    accepted_at,
-                    last_login_at,
-                    created_at,
-                    spam
-                FROM users
-                ${whereClause}
-                ORDER BY created_at DESC
-                `,
+      SELECT
+        id,
+        username,
+        email,
+        full_name,
+        role,
+        is_active,
+        invited_by,
+        invited_at,
+        accepted_at,
+        last_login_at,
+        created_at,
+        spam
+      FROM users
+      ${whereClause}
+      ORDER BY created_at DESC
+      `,
         values
       );
+
 
       return res.json(result.rows);
 
