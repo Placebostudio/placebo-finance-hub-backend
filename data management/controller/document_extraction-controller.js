@@ -302,8 +302,8 @@ exports.documentExtractionController = {
         [
           document_id,
           method,
-          fields,
-          validation_issues,
+          JSON.stringify(fields),
+          JSON.stringify(validation_issues),
           full_text ?? null,
           confidence ?? null,
           duration_ms ?? null,
