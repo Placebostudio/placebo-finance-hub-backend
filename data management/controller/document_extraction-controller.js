@@ -179,6 +179,16 @@ exports.documentExtractionController = {
       spam = false
     } = req.body;
 
+    console.log(
+      "validation_issues:",
+      validation_issues
+    );
+
+    console.log(
+      "validation_issues type:",
+      typeof validation_issues
+    );
+
     try {
 
       if (!user_id) {
